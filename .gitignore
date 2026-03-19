@@ -1,0 +1,38 @@
+# 忽略全局 .idea 文件夹（JetBrains IDE 配置）
+.idea/
+
+# 忽略所有子项目的 .idea 文件夹（如 digital-human-kg 内部）
+**/.idea/
+
+# 忽略所有 Python 缓存
+__pycache__/
+*.py[cod]
+*.pyo
+
+
+# IDE File
+.idea
+.vscode
+
+# log File
+logs
+*log.txt
+
+# Output File
+outputs
+*.wav
+*.mp3
+*.mp4
+
+# Python tmp File
+__pycache__
+
+# web tmp File
+node_modules
+dist
+package-lock.json
+
+# local Folder
+data
+volumes
+.DS_Store

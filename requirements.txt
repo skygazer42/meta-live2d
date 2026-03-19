@@ -1,0 +1,13 @@
+edge-tts>=7.0.2
+emoji>=2.14.0
+fastapi>=0.115.5
+httpx>=0.27.2
+openai>=1.63.0
+pydub>=0.25.1
+pytest>=8.3.3
+pytest_asyncio>=0.24.0
+python-multipart>=0.0.19
+websockets>=14.1
+requests>=2.32.3
+uvicorn>=0.32.1
+yacs>=0.1.8

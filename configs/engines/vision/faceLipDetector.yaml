@@ -1,0 +1,171 @@
+# faceLipDetector.yaml - 简化优化版配置
+NAME: "FaceLipDetector"
+VERSION: "v1.0.0"
+DESC: "人脸检测与唇形识别引擎（简化版）"
+META: {
+  official: "",
+  configuration: "",
+  tips: "基于MediaPipe和GRU的本地视觉检测引擎，支持人脸追踪、唇形识别和头部姿态估计（简化版）",
+  fee: "free"
+}
+
+# 暴露给前端的参数选项以及默认值
+PARAMETERS: [
+  # ========== 基础配置 ==========
+  {
+    name: "model_path",
+    description: "ONNX模型文件路径",
+    type: "string",
+    required: false,
+    choices: [],
+    default: "/data/temp21/digital-human/models/lip_model.onnx"
+  },
+  {
+    name: "use_cuda",
+    description: "启用CUDA加速",
+    type: "bool",
+    required: false,
+    choices: [],
+    default: false
+  },
+
+  # ========== 性能优化参数 ==========
+  {
+    name: "detect_every_n",
+    description: "每N帧进行一次人脸检测（降低CPU占用）",
+    type: "int",
+    required: false,
+    range: [1, 10],
+    default: 5
+  },
+  {
+    name: "bbox_smooth_alpha",
+    description: "边界框平滑系数（0-1，越大越稳定）",
+    type: "float",
+    required: false,
+    range: [0.1, 0.9],
+    default: 0.6
+  },
+
+  # ========== 唇动检测参数（简化版） ==========
+  {
+    name: "detect_face_confidence",
+    description: "人脸检测置信度阈值",
+    type: "float",
+    required: false,
+    range: [0.1, 1.0],
+    default: 0.5  # 降低到0.5，更容易检测到人脸
+  },
+  {
+    name: "mar_threshold",
+    description: "嘴部纵横比(MAR)基础阈值",
+    type: "float",
+    required: false,
+    range: [0.05, 0.5],
+    default: 0.03  # 大幅降低，从0.5降到0.15
+  },
+  {
+    name: "lip_open_threshold",
+    description: "唇部开合判定阈值",
+    type: "float",
+    required: false,
+    range: [0.1, 1.0],
+    default: 0.15  # 保持一致性
+  },
+
+  # ========== 简化的检测参数 ==========
+  {
+    name: "talking_min_frames",
+    description: "判定为说话的最少检测帧数（8帧窗口内）",
+    type: "int",
+    required: false,
+    range: [1, 8],
+    default: 3  # 8帧中有3帧检测到即认为在说话
+  },
+  {
+    name: "history_window",
+    description: "历史窗口大小（帧数）",
+    type: "int",
+    required: false,
+    range: [4, 16],
+    default: 8  # 使用8帧的滑动窗口
+  },
+
+  # ========== 头部姿态参数（可选） ==========
+  {
+    name: "swing_head_threshold",
+    description: "左右摆头角度阈值(度)",
+    type: "int",
+    required: false,
+    range: [10, 90],
+    default: 45  # 放宽到45度
+  },
+  {
+    name: "up_head_threshold",
+    description: "抬头角度阈值(度)",
+    type: "int",
+    required: false,
+    range: [-90, 0],
+    default: -20  # 放宽阈值
+  },
+  {
+    name: "down_head_threshold",
+    description: "低头角度阈值(度)",
+    type: "int",
+    required: false,
+    range: [0, 90],
+    default: 60  # 放宽阈值
+  },
+
+  # ========== 距离与尺寸参数 ==========
+  {
+    name: "spacing_distance_threshold",
+    description: "最大检测距离(厘米)",
+    type: "int",
+    required: false,
+    range: [30, 300],
+    default: 150  # 增加到150厘米
+  },
+  {
+    name: "focal_distance",
+    description: "摄像头焦距",
+    type: "int",
+    required: false,
+    range: [100, 2000],
+    default: 600
+  },
+  {
+    name: "padding",
+    description: "人脸区域扩展像素",
+    type: "int",
+    required: false,
+    range: [0, 100],
+    default: 20
+  },
+  {
+    name: "fixed_size",
+    description: "处理图像固定尺寸",
+    type: "int",
+    required: false,
+    choices: [224, 350, 512],
+    default: 350
+  },
+
+  # ========== 调试参数 ==========
+  {
+    name: "debug_mode",
+    description: "启用调试模式（输出MAR值等信息）",
+    type: "bool",
+    required: false,
+    choices: [],
+    default: true  # 默认开启调试
+  },
+  {
+    name: "debug_interval",
+    description: "调试信息输出间隔（帧数）",
+    type: "int",
+    required: false,
+    range: [10, 100],
+    default: 30  # 每30帧（约1秒）输出一次
+  }
+]
