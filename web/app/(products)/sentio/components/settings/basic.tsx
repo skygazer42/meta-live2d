@@ -41,7 +41,7 @@ const VisionBasicSettings = () => {
             {enabled && (
                 <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
                     <p className="text-xs text-gray-600 dark:text-gray-400">
-                        详细配置请在"视觉检测"标签页中调整帧率、预览窗口等参数
+                        详细配置请在&quot;视觉检测&quot;标签页中调整帧率、预览窗口等参数
                     </p>
                 </div>
             )}

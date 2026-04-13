@@ -191,6 +191,9 @@ export function useChatWithAgent() {
                         title: data,
                         color: "danger",
                     });
+                    agentDone = true;
+                    setChatting(false);
+                    break;
                 case STREAMING_EVENT_TYPE.TASK:
                 case STREAMING_EVENT_TYPE.DONE:
                     // agent输出结束, 后处理执行若存在
@@ -209,6 +212,7 @@ export function useChatWithAgent() {
         }
         const agentErrorCallback = (error: Error) => {
             agentDone = true;
+            controller.current = null;
             setChatting(false);
         }
         api_agent_stream(agentEngine, agentSettings, message, conversationId.current, controller.current.signal, agentCallback, agentErrorCallback);

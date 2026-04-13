@@ -10,6 +10,29 @@ import numpy as np
 enginePool = EnginePool()
 
 
+def _build_unavailable_vision_desc(description: str) -> EngineDesc:
+    errors = enginePool.getEngineErrors(ENGINE_TYPE.VISION)
+    tips = ""
+    if errors:
+        tips = "；".join(
+            f"{engine_name}: {error}"
+            for engine_name, error in errors.items()
+        )
+
+    return EngineDesc(
+        name="",
+        type=ENGINE_TYPE.VISION,
+        infer_type=INFER_TYPE.NORMAL,
+        desc=description,
+        meta={
+            "official": "",
+            "configuration": "",
+            "tips": tips,
+            "fee": ""
+        }
+    )
+
+
 
 def get_vision_list() -> List[EngineDesc]:
 
@@ -46,13 +69,7 @@ def get_vision_default() -> EngineDesc:
                     logger.info(f"[Vision API] No default configured, using first available: {default_name}")
                 else:
                     logger.warning("[Vision API] No vision engines available")
-                    return EngineDesc(
-                        name="",
-                        type=ENGINE_TYPE.VISION,
-                        infer_type=INFER_TYPE.NORMAL,
-                        desc="No vision engine available",
-                        meta={}
-                    )
+                    return _build_unavailable_vision_desc("No vision engine available")
 
             # 获取引擎描述
             engine = enginePool.getEngine(ENGINE_TYPE.VISION, default_name)
@@ -67,23 +84,11 @@ def get_vision_default() -> EngineDesc:
                 return engine.desc()
 
             # 没有可用引擎
-            return EngineDesc(
-                name="",
-                type=ENGINE_TYPE.VISION,
-                infer_type=INFER_TYPE.NORMAL,
-                desc="No vision engine available",
-                meta={}
-            )
+            return _build_unavailable_vision_desc("No vision engine available")
 
     except Exception as e:
         logger.error(f"[Vision API] Error getting default engine: {e}")
-        return EngineDesc(
-            name="",
-            type=ENGINE_TYPE.VISION,
-            infer_type=INFER_TYPE.NORMAL,
-            desc="Error getting default engine",
-            meta={}
-        )
+        return _build_unavailable_vision_desc("Error getting default engine")
 
 
 def get_vision_param(engine: str) -> List[ParamDesc]:

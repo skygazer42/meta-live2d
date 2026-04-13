@@ -7,7 +7,7 @@ import numpy as np
 from typing import Dict, Optional, List
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, UploadFile, Form
 from fastapi.responses import JSONResponse, StreamingResponse
-from digitalHuman.utils import config as dh_config, logger  # 修复：重命名导入避免遮蔽
+from digitalHuman.utils import logger
 from digitalHuman.protocol import *
 from digitalHuman.engine import EnginePool
 from digitalHuman.server.reponse import Response
@@ -21,6 +21,19 @@ from collections import deque
 router = APIRouter(prefix="/vision/v0")
 enginePool = EnginePool()
 wsManager = WebsocketManager()
+
+
+def resolve_vision_engine(engine_name: str) -> str:
+    requested_engine = (engine_name or "default").strip()
+    if requested_engine.lower() != "default":
+        return requested_engine
+
+    default_engine = get_vision_default()
+    resolved_name = getattr(default_engine, "name", "")
+    if resolved_name:
+        return resolved_name
+
+    raise RuntimeError("No vision engine available")
 
 
 # ========================= 获取Vision支持列表 ===========================
@@ -79,12 +92,9 @@ async def api_vision_process_image(
     """
     处理单张图片的人脸和唇形检测
     """
-    # 修复：使用重命名的 dh_config
-    if engine.lower() == "default":
-        engine = dh_config.SERVER.VISION.DEFAULT if hasattr(dh_config.SERVER, 'VISION') else "FaceLipDetector"
-
     response = Response()
     try:
+        engine = resolve_vision_engine(engine)
         # 读取图片
         image_data = await file.read()
         nparr = np.frombuffer(image_data, np.uint8)
@@ -131,16 +141,11 @@ async def api_vision_stream(
     """
     await websocket.accept()
 
-    # 修复：使用重命名的 dh_config
-    if engine.lower() == "default":
-        engine = dh_config.SERVER.VISION.DEFAULT if hasattr(dh_config.SERVER, 'VISION') else "FaceLipDetector"
-
-    logger.info(f"[Vision API] WebSocket connected with engine: {engine}, fps: {fps}")
-
-    # 获取视觉引擎
     try:
+        engine = resolve_vision_engine(engine)
+        logger.info(f"[Vision API] WebSocket connected with engine: {engine}, fps: {fps}")
         vision_engine = enginePool.getEngine(ENGINE_TYPE.VISION, engine)
-    except KeyError as e:
+    except (KeyError, RuntimeError) as e:
         await websocket.send_json({
             "type": "error",
             "message": str(e)
@@ -243,19 +248,15 @@ async def api_vision_multimodal(
     """
     await websocket.accept()
 
-    # 修复：使用重命名的 dh_config
-    if vision_engine.lower() == "default":
-        vision_engine = dh_config.SERVER.VISION.DEFAULT if hasattr(dh_config.SERVER, 'VISION') else "FaceLipDetector"
-
-    logger.info(f"[Vision Multimodal] Connected - Vision: {vision_engine}, ASR: {asr_engine}")
-
     # 获取引擎
     try:
+        vision_engine = resolve_vision_engine(vision_engine)
+        logger.info(f"[Vision Multimodal] Connected - Vision: {vision_engine}, ASR: {asr_engine}")
         vision_eng = enginePool.getEngine(ENGINE_TYPE.VISION, vision_engine)
         asr_eng = None
         if asr_engine and enable_audio:
             asr_eng = enginePool.getEngine(ENGINE_TYPE.ASR, asr_engine)
-    except KeyError as e:
+    except (KeyError, RuntimeError) as e:
         await websocket.send_json({
             "type": "error",
             "message": str(e)
@@ -412,14 +413,11 @@ async def api_vision_batch_process(
     """
     批量处理多张图片
     """
-    # 修复：使用重命名的 dh_config
-    if engine.lower() == "default":
-        engine = dh_config.SERVER.VISION.DEFAULT if hasattr(dh_config.SERVER, 'VISION') else "FaceLipDetector"
-
     response = Response()
     results = []
 
     try:
+        engine = resolve_vision_engine(engine)
         vision_engine = enginePool.getEngine(ENGINE_TYPE.VISION, engine)
         config_dict = json.loads(config) if config else {}  # config 作为表单参数使用
 

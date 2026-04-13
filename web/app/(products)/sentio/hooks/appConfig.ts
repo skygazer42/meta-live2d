@@ -18,7 +18,7 @@ import * as CONSTANTS from '@/lib/constants';
 export function useAppConfig() {
     const { enable: asrEnable, setEnable: setAsrEnable, engine: asrEngine, setEngine: setAsrEngine, settings: asrSettings, setSettings: setAsrSettings } = useSentioAsrStore();
     const { enable: ttsEnable, setEnable: setTtsEnable, engine: ttsEngine, setEngine: setTtsEngine, setSettings: setTtsSettings, settings: ttsSettings } = useSentioTtsStore();
-    const { engine: agentEngine, setEngine: setAgentEngine, setSettings: setAgentSettings, settings: agentSettings } = useSentioAgentStore();
+    const { setEnable: setAgentEnable, engine: agentEngine, setEngine: setAgentEngine, setSettings: setAgentSettings, settings: agentSettings } = useSentioAgentStore();
     const { background, setBackground } = useSentioBackgroundStore();
     const { character, setCharacter } = useSentioCharacterStore();
     const { sound, setSound, showThink, setShowThink, lipFactor, setLipFactor } = useSentioBasicStore();
@@ -102,6 +102,7 @@ export function useAppConfig() {
     const resetAppConfig = () => {
         setAsrEnable(true);
         setTtsEnable(true);
+        setAgentEnable(true);
         resetAppEngine();
         clearChatRecord();
         setBackground(null);
@@ -121,6 +122,7 @@ export function useAppConfig() {
             setTtsEnable(config.tts_enable);
             config.tts && setTtsEngine(config.tts.name);
             config.tts && setTtsSettings(config.tts.config);
+            setAgentEnable(true);
             config.agent && setAgentEngine(config.agent.name);
             config.agent && setAgentSettings(config.agent.config);
             setBackground(config.background);

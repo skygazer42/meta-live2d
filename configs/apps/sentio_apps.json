@@ -1,0 +1,78 @@
+{
+  "default": {
+    "asr_enable": true,
+    "tts_enable": true,
+    "asr": {
+      "name": "default",
+      "type": "ASR",
+      "config": {}
+    },
+    "tts": {
+      "name": "default",
+      "type": "TTS",
+      "config": {}
+    },
+    "llm": {
+      "name": "default",
+      "type": "LLM",
+      "config": {}
+    },
+    "agent": {
+      "name": "default",
+      "type": "AGENT",
+      "config": {}
+    },
+    "background": null,
+    "character": {
+      "resource_id": "FREE_HaruGreeter",
+      "name": "HaruGreeter",
+      "type": "character",
+      "link": "/sentio/characters/free/HaruGreeter/HaruGreeter.png"
+    },
+    "type": "Freedom",
+    "ext": {
+      "sound": true,
+      "showThink": true,
+      "lip_factor": 5.0,
+      "chat_mode": "DIALOGUE"
+    }
+  },
+  "demo": {
+    "asr_enable": true,
+    "tts_enable": true,
+    "asr": {
+      "name": "default",
+      "type": "ASR",
+      "config": {}
+    },
+    "tts": {
+      "name": "default",
+      "type": "TTS",
+      "config": {}
+    },
+    "llm": {
+      "name": "default",
+      "type": "LLM",
+      "config": {}
+    },
+    "agent": {
+      "name": "default",
+      "type": "AGENT",
+      "config": {}
+    },
+    "background": null,
+    "character": {
+      "resource_id": "FREE_HaruGreeter",
+      "name": "HaruGreeter",
+      "type": "character",
+      "link": "/sentio/characters/free/HaruGreeter/HaruGreeter.png"
+    },
+    "type": "Freedom",
+    "ext": {
+      "sound": true,
+      "showThink": true,
+      "lip_factor": 5.0,
+      "chat_mode": "IMMSERSIVE"
+    }
+  }
+}

@@ -26,6 +26,8 @@ outputs
 
 # Python tmp File
 __pycache__
+.venv/
+.venv*/
 
 # web tmp File
 node_modules

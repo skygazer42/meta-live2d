@@ -21,6 +21,30 @@ PARAMETERS: [
     default: "/data/temp21/digital-human/models/lip_model.onnx"
   },
   {
+    name: "mediapipe_mode",
+    description: "MediaPipe 后端模式：auto 优先旧 solutions，缺失时可切 tasks",
+    type: "string",
+    required: false,
+    choices: ["auto", "solutions", "tasks"],
+    default: "auto"
+  },
+  {
+    name: "face_detection_model_path",
+    description: "MediaPipe Tasks 人脸检测模型路径（例如 face_detection_short_range.tflite）",
+    type: "string",
+    required: false,
+    choices: [],
+    default: "assets/mediapipe/face_detection_short_range.tflite"
+  },
+  {
+    name: "face_landmarker_model_path",
+    description: "MediaPipe Tasks 人脸关键点模型路径（例如 face_landmarker_v2.task）",
+    type: "string",
+    required: false,
+    choices: [],
+    default: "assets/mediapipe/face_landmarker_v2_with_blendshapes.task"
+  },
+  {
     name: "use_cuda",
     description: "启用CUDA加速",
     type: "bool",

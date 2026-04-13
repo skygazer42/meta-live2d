@@ -1,0 +1,9 @@
+NAME: "OpenCVFaceDetector"
+VERSION: "v1.0.0"
+DESC: "OpenCV 本地人脸检测降级引擎"
+META: {
+  official: "",
+  configuration: "",
+  tips: "当 MediaPipe 在当前环境不可用时使用。支持基础人脸检测，不提供唇动识别或头部姿态估计。",
+  fee: "free"
+}

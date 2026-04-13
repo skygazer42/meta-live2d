@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import {Inter} from 'next/font/google';
+import Script from 'next/script';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
 import {Providers} from "./providers";
@@ -11,7 +12,9 @@ const inter = Inter({subsets: ['latin']});
 
 export const metadata: Metadata = {
   title: '沐光而行',
-  icons: 'favicon.icon',
+  icons: {
+    icon: '/favicon.ico',
+  },
 };
 
 export default async function RootLayout({
@@ -26,7 +29,7 @@ export default async function RootLayout({
   return (
     <html lang={locale} className='dark'>
       <head>
-        <script src={getSrcPath('sentio/core/live2dcubismcore.min.js')} />
+        <Script src={getSrcPath('sentio/core/live2dcubismcore.min.js')} strategy="beforeInteractive" />
       </head>
       <body className={clsx(inter.className)}>
         <NextIntlClientProvider messages={messages}>

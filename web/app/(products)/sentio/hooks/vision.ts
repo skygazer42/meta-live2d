@@ -1,8 +1,9 @@
 // hooks/vision.ts - 完整修复版（解决黑屏 + 消息解析）
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { VisionStreamClient } from '@/lib/api/server';
+import { VisionStreamClient, api_vision_get_default, api_vision_get_list } from '@/lib/api/server';
 import * as PROTOCOL from '@/lib/protocol';
+import { useSentioVisionStore } from '@/lib/store/sentio';
 
 // 辅助函数：安全解析JSON
 function safeParse(s: string) {
@@ -30,6 +31,7 @@ function toNum(v: unknown, def = 0): number {
 }
 
 export function useVisionDetection() {
+  const { engine, setEngine } = useSentioVisionStore();
   const [isConnected, setIsConnected] = useState(false);
   const [hasFace, setHasFace] = useState(false);
   const [isTalking, setIsTalking] = useState(false);
@@ -45,10 +47,15 @@ export function useVisionDetection() {
   // 连接状态标记
   const connectingRef = useRef(false);
   const mountedRef = useRef(true);
+  const isInitializingRef = useRef(false);
 
   // FPS 节流
   const lastFrameTimeRef = useRef(0);
   const animationIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    isInitializingRef.current = isInitializing;
+  }, [isInitializing]);
 
   // 新增：回调 ref 用于绑定流到预览视频
   const bindPreviewRef = useCallback((el: HTMLVideoElement | null) => {
@@ -81,9 +88,31 @@ export function useVisionDetection() {
 
   const startDetection = useCallback(async (fps = 10) => {
     // 防止重复初始化
-    if (visionClientRef.current || connectingRef.current || isInitializing) {
+    if (visionClientRef.current || connectingRef.current || isInitializingRef.current) {
       console.log('[Vision] Already connected or connecting, skipping...');
       return;
+    }
+
+    const availableEngines = await api_vision_get_list();
+    const availableNames = new Set(availableEngines.map((item) => item.name));
+    const defaultEngine = await api_vision_get_default();
+    const defaultEngineName = typeof defaultEngine === 'string' ? defaultEngine : defaultEngine?.name || '';
+    const requestedEngine =
+      (engine && availableNames.has(engine) && engine) ||
+      (defaultEngineName && availableNames.has(defaultEngineName) && defaultEngineName) ||
+      availableEngines[0]?.name ||
+      '';
+
+    if (!requestedEngine) {
+      console.warn('[Vision] No available vision engine, skipping detection startup');
+      setIsInitializing(false);
+      setIsConnected(false);
+      connectingRef.current = false;
+      return;
+    }
+
+    if (engine !== requestedEngine) {
+      setEngine(requestedEngine);
     }
 
     console.log('[Vision] Starting detection with fps:', fps);
@@ -144,7 +173,7 @@ export function useVisionDetection() {
 
       // 5. 创建 WebSocket 客户端
       const client = new VisionStreamClient({
-        engine: 'FaceLipDetector',
+        engine: requestedEngine,
         fps,
         onOpen: () => {
           if (!mountedRef.current) return;
@@ -309,7 +338,7 @@ export function useVisionDetection() {
       setIsInitializing(false);
       connectingRef.current = false;
     }
-  }, []);
+  }, [engine, setEngine]);
 
   // 辅助函数：创建临时视频元素（仅在没有预览视频时使用）
   const createTempVideo = async (stream: MediaStream): Promise<HTMLVideoElement> => {

@@ -17,7 +17,7 @@ SERVER:
       SUPPORT_LIST: []
       DEFAULT: ""
     VISION:
-      SUPPORT_LIST: [ "faceLipDetector.yaml" ]
+      SUPPORT_LIST: [ "faceLipDetector.yaml", "opencvFaceDetector.yaml" ]
       DEFAULT: ""
   AGENTS:
     SUPPORT_LIST: [ "repeaterAgent.yaml", "openaiAPI.yaml", "difyAgent.yaml", "fastgptAgent.yaml", "cozeAgent.yaml" ]

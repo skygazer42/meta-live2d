@@ -64,10 +64,10 @@ export function Live2d() {
                     style={{ pointerEvents: 'none' }}
                 />
                 :
-                <img 
-                    src={background.link}
-                    alt="Background Image"
-                    className='absolute top-0 left-0 w-full h-full object-cover z-[-1]'
+                <div
+                    aria-hidden="true"
+                    className='absolute top-0 left-0 w-full h-full bg-center bg-cover z-[-1]'
+                    style={{ backgroundImage: `url('${background.link}')` }}
                 />
                 )
             }

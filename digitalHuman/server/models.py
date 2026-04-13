@@ -4,7 +4,7 @@
 @Author  :   一力辉
 '''
 
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Any
 from pydantic import BaseModel
 from digitalHuman.server.reponse import BaseResponse
 from digitalHuman.protocol import *
@@ -49,3 +49,6 @@ class ConversationInput(BaseModel):
 
 class ConversationIdResp(BaseResponse):
     data: str
+
+class AppConfigResp(BaseResponse):
+    data: Dict[str, Any] = {}

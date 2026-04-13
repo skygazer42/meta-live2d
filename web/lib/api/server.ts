@@ -5,10 +5,20 @@ import { v4 as uuidv4 } from 'uuid';
 import { getHost, errorHandler, get, post, filePost, put, del, getWsUrl } from "./requests";
 import { WebsocketClient } from "./websocket";
 
-const SERVER_VERSION = process.env.NEXT_PUBLIC_SERVER_VERSION;
+const SERVER_VERSION = process.env.NEXT_PUBLIC_SERVER_VERSION || "v0";
 
 const BASE_PATH = "/adh"
 const VISION_PATH = BASE_PATH + `/vision/${SERVER_VERSION}`
+
+// =========================== Common APIs ===========================
+export async function api_common_get_app_config(appId: string): Promise<PROTOCOL.AppConfig | null> {
+    const path = `${BASE_PATH}/common/${SERVER_VERSION}/app/${appId}`;
+    return get(path, null).then((response: PROTOCOL.AppConfigResponse) => {
+        return response.data;
+    }).catch(() => {
+        return null;
+    })
+}
 
 // =========================== ASR APIs ===========================
 const ASR_PATH = BASE_PATH + `/asr/${SERVER_VERSION}`
@@ -234,10 +244,12 @@ export function api_agent_stream(
             onOk(eventResp)
         },
         onerror(error) {
-            throw new Error(error)
+            throw error instanceof Error ? error : new Error(String(error))
         },
     }).catch((error) => {
-        errorHandler(error, signal)
+        const requestError = error instanceof Error ? error : new Error(String(error));
+        onError(requestError);
+        errorHandler(requestError, signal)
     })
 }
 
@@ -252,12 +264,12 @@ export async function api_vision_get_list(): Promise<PROTOCOL.EngineDesc[]> {
     })
 }
 
-export async function api_vision_get_default(): Promise<string> {
+export async function api_vision_get_default(): Promise<PROTOCOL.EngineDesc | string> {
     const path = `${VISION_PATH}/engine/default`;
-    return get(path, null).then((response: any) => {
-        return response.data || "FaceLipDetector"
+    return get(path, null).then((response: PROTOCOL.EngineDefaultResponse) => {
+        return response.data || ""
     }).catch(() => {
-        return "FaceLipDetector"
+        return ""
     })
 }
 

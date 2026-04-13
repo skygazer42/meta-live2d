@@ -1,4 +1,4 @@
-import { memo, use } from 'react';
+import { memo } from 'react';
 import { EngineParamDesc, PARAM_TYPE } from '@/lib/protocol';
 import {
     Autocomplete,
@@ -25,7 +25,7 @@ export function ParamsLoading() {
     )
 }
 
-export const ParamsList = memo(({
+export const ParamsList = memo(function ParamsList({
     params, 
     settings,
     setSettings
@@ -33,7 +33,7 @@ export const ParamsList = memo(({
     params: EngineParamDesc[], 
     settings: {[key: string]: any},
     setSettings: (settings: { [key: string]: any }) => void
-}) => {
+}) {
     return (
         <>
             {
@@ -145,10 +145,12 @@ export const ParamsList = memo(({
                             }
                         // TODO: 布尔类型
                         case PARAM_TYPE.BOOL:
-                            return;
+                            return null;
                     }
                 })
             }
         </>
     )
 });
+
+ParamsList.displayName = 'ParamsList';

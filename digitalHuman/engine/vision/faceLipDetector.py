@@ -1,20 +1,38 @@
 # -*- coding: utf-8 -*-
 
-import cv2
-import numpy as np
-import mediapipe as mp
-import onnxruntime as ort
+import asyncio
+import os
+import threading
 from collections import deque
-from typing import Dict, Optional, Tuple, Any
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
+
+import cv2
+import mediapipe as mp
+import numpy as np
+import onnxruntime as ort
+
 from ..builder import VisionEngines
 from ..engineBase import BaseVisionEngine
 from digitalHuman.protocol import *
 from digitalHuman.utils import logger
-import asyncio
-import threading
-import time
+
+try:
+    from mediapipe.tasks.python import vision as mp_vision
+    from mediapipe.tasks.python.core.base_options import BaseOptions as MPBaseOptions
+    from mediapipe.tasks.python.vision.core.image import (
+        Image as MPImage,
+        ImageFormat as MPImageFormat,
+    )
+except Exception:
+    mp_vision = None
+    MPBaseOptions = None
+    MPImage = None
+    MPImageFormat = None
 
 __all__ = ["FaceLipDetector"]
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 @VisionEngines.register("FaceLipDetector")
@@ -26,67 +44,70 @@ class FaceLipDetector(BaseVisionEngine):
         params = self._extract_parameters()
 
         # ========== 优化参数 ==========
-        # 人脸检测降频
         self.detect_every_n = int(params.get("detect_every_n", 5))
         self._frame_idx = 0
         self._last_bbox = None
         self._bbox_alpha = float(params.get("bbox_smooth_alpha", 0.6))
 
-        # ========== MediaPipe配置 ==========
+        # ========== MediaPipe 配置 ==========
         confidence = float(params.get("detect_face_confidence", 0.7))
-        self.face_detection = mp.solutions.face_detection.FaceDetection(
-            model_selection=0,
-            min_detection_confidence=confidence
+        self.mediapipe_mode = str(params.get("mediapipe_mode", "auto")).strip().lower()
+        self.face_detection_model_path = self._resolve_local_path(
+            str(params.get("face_detection_model_path", "") or "").strip()
         )
-
-        self.face_mesh = mp.solutions.face_mesh.FaceMesh(
-            static_image_mode=False,
-            refine_landmarks=False,
-            max_num_faces=1,
-            min_detection_confidence=confidence,
-            min_tracking_confidence=confidence
+        self.face_landmarker_model_path = self._resolve_local_path(
+            str(params.get("face_landmarker_model_path", "") or "").strip()
         )
+        self._mediapipe_backend = self._resolve_mediapipe_backend()
+        self._setup_mediapipe_backend(confidence)
 
-        # ========== ONNX模型配置 ==========
-        model_path = params.get("model_path", "/data/temp21/digital-human/models/lip_model.onnx")
+        # ========== ONNX 模型配置 ==========
+        model_path = self._resolve_local_path(
+            str(params.get("model_path", "/data/temp21/digital-human/models/lip_model.onnx"))
+        )
         sess_options = ort.SessionOptions()
         sess_options.intra_op_num_threads = 4
         sess_options.inter_op_num_threads = 2
 
         providers = ["CPUExecutionProvider"]
+        self.session = None
+        self.input_name = ""
+        self.output_name = ""
         try:
             self.session = ort.InferenceSession(model_path, sess_options=sess_options, providers=providers)
             self.input_name = self.session.get_inputs()[0].name
             self.output_name = self.session.get_outputs()[0].name
             self.use_lstm = True
-            logger.info(f"[FaceLipDetector] LSTM model loaded successfully")
+            logger.info("[FaceLipDetector] LSTM model loaded successfully")
         except Exception as e:
             logger.warning(f"[FaceLipDetector] Failed to load LSTM model: {e}")
             self.use_lstm = False
 
-        # ========== 简化的检测参数 ==========
-        # MAR阈值 - 大幅降低
-        self.mar_threshold = float(params.get("mar_threshold", 0.03))  # 从0.5降到0.15
-
-        # 唇动检测历史
-        self.lip_moving_history = deque(maxlen=8)  # 用于判断是否在说话
-        self.d_normalized_history = deque(maxlen=25)  # LSTM输入历史
+        # ========== 简化检测参数 ==========
+        self.mar_threshold = float(params.get("mar_threshold", 0.03))
+        self.lip_moving_history = deque(maxlen=8)
+        self.d_normalized_history = deque(maxlen=25)
         self.selected_landmarks_lst = deque(maxlen=50)
 
-        # 简化的参数
         self.padding = int(params.get("padding", 20))
         self.fixed_size = int(params.get("fixed_size", 350))
         self.focal_distance = int(params.get("focal_distance", 600))
         self.spacing_distance_threshold = int(params.get("spacing_distance_threshold", 100))
 
-        # 状态追踪
         self.has_person = False
         self.is_talking = False
-
-        # 线程安全
         self.lock = threading.Lock()
 
-        logger.info("[FaceLipDetector] Vision engine initialized (simplified version)")
+        logger.info(f"[FaceLipDetector] Vision engine initialized with mediapipe backend: {self._mediapipe_backend}")
+
+    def release(self):
+        for attr_name in ("face_detection", "face_mesh"):
+            engine = getattr(self, attr_name, None)
+            if engine and hasattr(engine, "close"):
+                try:
+                    engine.close()
+                except Exception as e:
+                    logger.debug(f"[FaceLipDetector] Failed to close {attr_name}: {e}")
 
     def _extract_parameters(self) -> Dict[str, Any]:
         """从配置中提取参数"""
@@ -106,6 +127,104 @@ class FaceLipDetector(BaseVisionEngine):
                 params = self.cfg.copy()
 
         return params
+
+    def _resolve_local_path(self, path: str) -> str:
+        if not path:
+            return ""
+
+        expanded = Path(path).expanduser()
+        if expanded.is_absolute():
+            return str(expanded)
+
+        cwd_candidate = (Path.cwd() / expanded).resolve()
+        if cwd_candidate.exists():
+            return str(cwd_candidate)
+
+        return str((PROJECT_ROOT / expanded).resolve())
+
+    def _resolve_mediapipe_backend(self) -> str:
+        if self.mediapipe_mode not in {"auto", "solutions", "tasks"}:
+            raise RuntimeError(
+                f"Unsupported mediapipe_mode: {self.mediapipe_mode}. "
+                "Expected one of auto, solutions, tasks."
+            )
+
+        if self.mediapipe_mode == "solutions":
+            if not hasattr(mp, "solutions"):
+                raise RuntimeError("MediaPipe solutions backend is unavailable in the installed mediapipe package")
+            return "solutions"
+
+        if self.mediapipe_mode == "tasks":
+            self._validate_tasks_runtime()
+            self._validate_task_model_paths()
+            return "tasks"
+
+        if hasattr(mp, "solutions"):
+            return "solutions"
+
+        self._validate_tasks_runtime()
+        self._validate_task_model_paths()
+        return "tasks"
+
+    def _validate_tasks_runtime(self):
+        if not all((mp_vision, MPBaseOptions, MPImage, MPImageFormat)):
+            raise RuntimeError("MediaPipe tasks runtime is unavailable in the installed mediapipe package")
+
+    def _validate_task_model_paths(self):
+        missing = []
+        for path in (self.face_detection_model_path, self.face_landmarker_model_path):
+            if not path or not os.path.exists(path):
+                missing.append(path or "<empty>")
+        if missing:
+            raise RuntimeError(
+                "MediaPipe tasks backend requires existing face_detection_model_path and "
+                f"face_landmarker_model_path, missing: {missing}"
+            )
+
+    def _build_task_base_options(self, model_path: str):
+        kwargs = {"model_asset_path": model_path}
+        delegate_enum = getattr(MPBaseOptions, "Delegate", None)
+        if delegate_enum is not None and hasattr(delegate_enum, "CPU"):
+            kwargs["delegate"] = delegate_enum.CPU
+        return MPBaseOptions(**kwargs)
+
+    def _setup_mediapipe_backend(self, confidence: float):
+        if self._mediapipe_backend == "solutions":
+            self.face_detection = mp.solutions.face_detection.FaceDetection(
+                model_selection=0,
+                min_detection_confidence=confidence
+            )
+
+            self.face_mesh = mp.solutions.face_mesh.FaceMesh(
+                static_image_mode=False,
+                refine_landmarks=False,
+                max_num_faces=1,
+                min_detection_confidence=confidence,
+                min_tracking_confidence=confidence
+            )
+            return
+
+        detector_options = mp_vision.FaceDetectorOptions(
+            base_options=self._build_task_base_options(self.face_detection_model_path),
+            running_mode=mp_vision.RunningMode.IMAGE,
+            min_detection_confidence=confidence,
+        )
+        self.face_detection = mp_vision.FaceDetector.create_from_options(detector_options)
+
+        landmarker_options = mp_vision.FaceLandmarkerOptions(
+            base_options=self._build_task_base_options(self.face_landmarker_model_path),
+            running_mode=mp_vision.RunningMode.IMAGE,
+            num_faces=1,
+            min_face_detection_confidence=confidence,
+            min_face_presence_confidence=confidence,
+            min_tracking_confidence=confidence,
+            output_face_blendshapes=False,
+            output_facial_transformation_matrixes=False,
+        )
+        self.face_mesh = mp_vision.FaceLandmarker.create_from_options(landmarker_options)
+
+    def _create_task_image(self, rgb_image: np.ndarray):
+        return MPImage(image_format=MPImageFormat.SRGB, data=rgb_image)
 
     async def run(self, input: VisionMessage, **kwargs) -> FaceDetectionResult:
         """处理视频帧并返回检测结果"""
@@ -142,7 +261,6 @@ class FaceLipDetector(BaseVisionEngine):
         try:
             self._frame_idx += 1
 
-            # ========== 人脸检测 ==========
             if self._frame_idx % self.detect_every_n == 1 or self._last_bbox is None:
                 bbox = self._detect_face(frame)
                 if bbox:
@@ -155,30 +273,23 @@ class FaceLipDetector(BaseVisionEngine):
                 x_min, y_min, width, height = bbox[:4]
                 result["face_bbox"] = [x_min, y_min, width, height]
 
-                # 计算人脸距离
                 if len(bbox) >= 6:
                     face_distance = self._calculate_face_distance(bbox)
                     result["face_distance"] = face_distance
                 else:
-                    result["face_distance"] = 50  # 默认距离
+                    result["face_distance"] = 50
 
-                # 提取人脸区域
                 face_roi = self._extract_face_roi(frame, bbox)
-
-                # 检测面部特征点
                 landmarks = self._detect_landmarks(face_roi)
 
                 if landmarks is not None:
-                    # 简化的唇动检测
                     is_talking, confidence = self._detect_lip_movement_simple(landmarks)
                     result["is_talking"] = is_talking
                     result["confidence"] = confidence
 
-                    # 计算头部姿态（可选）
                     swing, nodding = self._calculate_head_pose(landmarks)
                     result["head_pose"] = {"swing": swing, "nodding": nodding}
             else:
-                # 无人脸时重置
                 self._last_bbox = None
                 self.has_person = False
                 self.lip_moving_history.clear()
@@ -191,20 +302,15 @@ class FaceLipDetector(BaseVisionEngine):
 
     def _detect_lip_movement_simple(self, landmarks: np.ndarray) -> Tuple[bool, float]:
         """简化的唇动检测"""
-        # 计算MAR
         mar = self._calculate_mouth_aspect_ratio(landmarks)
-
-        # MAR阈值判断
         detected_mar = mar > self.mar_threshold
 
-        # LSTM预测（如果可用）
         detected_lstm = False
         lstm_confidence = 0.0
 
         if self.use_lstm:
             self.selected_landmarks_lst.append(landmarks)
             if len(self.selected_landmarks_lst) >= 25:
-                # 计算唇部距离
                 distances = []
                 for lm in list(self.selected_landmarks_lst)[-25:]:
                     _, d_norm = self._calculate_lip_distance(lm)
@@ -212,9 +318,8 @@ class FaceLipDetector(BaseVisionEngine):
 
                 self.d_normalized_history = deque(distances, maxlen=25)
 
-                if len(self.d_normalized_history) >= 25:
+                if len(self.d_normalized_history) >= 25 and self.session is not None:
                     try:
-                        # LSTM预测
                         normalized = self._normalize(list(self.d_normalized_history))
                         input_array = np.array(normalized, dtype=np.float32).reshape(1, 25, 1)
 
@@ -222,33 +327,27 @@ class FaceLipDetector(BaseVisionEngine):
                             y_pred = self.session.run([self.output_name], {self.input_name: input_array})
 
                         predict = np.argmax(y_pred[0], axis=-1)
-                        # print("predict =", predict)
                         detected_lstm = int(predict) == 1
                         lstm_confidence = 0.6 if detected_lstm else 0.3
                     except Exception as e:
                         logger.debug(f"[FaceLipDetector] LSTM prediction error: {e}")
 
-        # 综合判断：MAR或LSTM任一检测到即认为在说话
         detected = detected_mar or detected_lstm
-
-        # 添加到历史记录
         self.lip_moving_history.append(detected)
 
-        # 简单的滤波：最近8帧中有3帧以上检测到说话
         if len(self.lip_moving_history) >= 8:
             talking_count = sum(self.lip_moving_history)
             is_talking = talking_count >= 3
         else:
             is_talking = detected
 
-        # 计算置信度
         mar_confidence = min(mar / self.mar_threshold, 1.0) if mar > 0 else 0
         confidence = max(mar_confidence, lstm_confidence)
 
-        # 调试输出
-        if self._frame_idx % 30 == 0:  # 每秒输出一次
+        if self._frame_idx % 30 == 0:
             logger.debug(
-                f"[FaceLipDetector] MAR: {mar:.3f}, Threshold: {self.mar_threshold:.3f}, Talking: {is_talking}")
+                f"[FaceLipDetector] MAR: {mar:.3f}, Threshold: {self.mar_threshold:.3f}, Talking: {is_talking}"
+            )
 
         return is_talking, float(np.clip(confidence, 0.1, 0.95))
 
@@ -271,14 +370,16 @@ class FaceLipDetector(BaseVisionEngine):
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frame_height, frame_width, _ = frame.shape
 
-        results = self.face_detection.process(rgb_frame)
+        if self._mediapipe_backend == "solutions":
+            results = self.face_detection.process(rgb_frame)
 
-        if results.detections:
-            # 选择最大的人脸
+            if not results.detections:
+                return None
+
             best_detection = max(
                 results.detections,
                 key=lambda d: d.location_data.relative_bounding_box.width *
-                              d.location_data.relative_bounding_box.height
+                d.location_data.relative_bounding_box.height
             )
 
             bbox = best_detection.location_data.relative_bounding_box
@@ -287,7 +388,6 @@ class FaceLipDetector(BaseVisionEngine):
             width = int(bbox.width * frame_width)
             height = int(bbox.height * frame_height)
 
-            # 获取眼睛关键点（用于距离计算）
             if hasattr(best_detection.location_data, 'relative_keypoints'):
                 rk = best_detection.location_data.relative_keypoints
                 if len(rk) >= 2:
@@ -297,14 +397,40 @@ class FaceLipDetector(BaseVisionEngine):
 
             return (x_min, y_min, width, height)
 
-        return None
+        with self.lock:
+            results = self.face_detection.detect(self._create_task_image(rgb_frame))
 
-    def _extract_face_roi(self, frame: np.ndarray, bbox: tuple) -> np.ndarray:
+        if not results.detections:
+            return None
+
+        best_detection = max(
+            results.detections,
+            key=lambda detection: detection.bounding_box.width * detection.bounding_box.height
+        )
+        bbox = best_detection.bounding_box
+        x_min = int(bbox.origin_x)
+        y_min = int(bbox.origin_y)
+        width = int(bbox.width)
+        height = int(bbox.height)
+
+        if best_detection.keypoints and len(best_detection.keypoints) >= 2:
+            right_eye = (
+                best_detection.keypoints[0].x * frame_width,
+                best_detection.keypoints[0].y * frame_height,
+            )
+            left_eye = (
+                best_detection.keypoints[1].x * frame_width,
+                best_detection.keypoints[1].y * frame_height,
+            )
+            return (x_min, y_min, width, height, right_eye, left_eye)
+
+        return (x_min, y_min, width, height)
+
+    def _extract_face_roi(self, frame: np.ndarray, bbox: tuple) -> Optional[np.ndarray]:
         """提取人脸区域"""
         x_min, y_min, width, height = bbox[:4]
         frame_height, frame_width = frame.shape[:2]
 
-        # 添加padding
         x_min_padded = max(0, x_min - self.padding)
         y_min_padded = max(0, y_min - self.padding)
         x_max_padded = min(frame_width, x_min + width + self.padding)
@@ -312,63 +438,59 @@ class FaceLipDetector(BaseVisionEngine):
 
         face_roi = frame[y_min_padded:y_max_padded, x_min_padded:x_max_padded]
 
-        # 调整到固定大小
         if face_roi.size > 0:
-            face_roi_resized = cv2.resize(face_roi, (self.fixed_size, self.fixed_size))
-            return face_roi_resized
+            return cv2.resize(face_roi, (self.fixed_size, self.fixed_size))
 
         return None
 
-    def _detect_landmarks(self, face_roi: np.ndarray) -> Optional[np.ndarray]:
+    def _detect_landmarks(self, face_roi: Optional[np.ndarray]) -> Optional[np.ndarray]:
         """检测面部特征点"""
         if face_roi is None or face_roi.size == 0:
             return None
 
         rgb_face = cv2.cvtColor(face_roi, cv2.COLOR_BGR2RGB)
 
-        with self.lock:
-            output = self.face_mesh.process(rgb_face)
+        if self._mediapipe_backend == "solutions":
+            with self.lock:
+                output = self.face_mesh.process(rgb_face)
 
-        if output.multi_face_landmarks:
+            if not output.multi_face_landmarks:
+                return None
+
             landmarks = output.multi_face_landmarks[0].landmark
-            landmarks_np = np.array(
-                [(lm.x * self.fixed_size, lm.y * self.fixed_size)
-                 for lm in landmarks],
-                dtype=np.float32
-            )
-            return landmarks_np
+        else:
+            with self.lock:
+                output = self.face_mesh.detect(self._create_task_image(rgb_face))
 
-        return None
+            if not output.face_landmarks:
+                return None
+
+            landmarks = output.face_landmarks[0]
+
+        return np.array(
+            [(lm.x * self.fixed_size, lm.y * self.fixed_size) for lm in landmarks],
+            dtype=np.float32
+        )
 
     def _calculate_mouth_aspect_ratio(self, landmarks: np.ndarray) -> float:
         """计算嘴唇纵横比（MAR）- 简化版"""
-        # 上唇和下唇的关键点索引
         upper_idx = np.array([13, 81, 82, 312, 311])
         lower_idx = np.array([14, 178, 87, 317, 402])
 
-        # 计算垂直距离
         vertical = np.linalg.norm(
             landmarks[upper_idx] - landmarks[lower_idx], axis=1
         ).mean()
-
-        # 计算水平距离
         horizontal = np.linalg.norm(landmarks[61] - landmarks[291])
 
-        # 计算MAR
-        mar = vertical / (horizontal + 1e-6)
-
-        return mar
+        return vertical / (horizontal + 1e-6)
 
     def _calculate_lip_distance(self, landmarks: np.ndarray) -> Tuple[float, float]:
         """计算唇部距离特征"""
         mar = self._calculate_mouth_aspect_ratio(landmarks)
-
-        # 简化的归一化距离计算
         upper_lip = landmarks[13, 1]
         lower_lip = landmarks[14, 1]
         distance_upper_lip = abs(upper_lip - lower_lip)
-
-        d_norm = distance_upper_lip / 10.0  # 简化归一化
+        d_norm = distance_upper_lip / 10.0
 
         return mar, d_norm
 
@@ -386,13 +508,9 @@ class FaceLipDetector(BaseVisionEngine):
 
     def _calculate_head_pose(self, landmarks: np.ndarray) -> Tuple[float, float]:
         """计算头部姿态角度"""
-        LEFT_EYE_INDEX = 33
-        RIGHT_EYE_INDEX = 263
-        NOSE_TIP_INDEX = 1
-
-        left_eye = landmarks[LEFT_EYE_INDEX]
-        right_eye = landmarks[RIGHT_EYE_INDEX]
-        nose_tip = landmarks[NOSE_TIP_INDEX]
+        left_eye = landmarks[33]
+        right_eye = landmarks[263]
+        nose_tip = landmarks[1]
 
         eye_center = (left_eye + right_eye) / 2
         interocular_distance = np.linalg.norm(right_eye - left_eye)
@@ -408,15 +526,8 @@ class FaceLipDetector(BaseVisionEngine):
     def _calculate_face_distance(self, bbox: tuple) -> float:
         """计算人脸到摄像头的距离"""
         if len(bbox) < 6:
-            return 50.0  # 默认距离
+            return 50.0
 
         _, _, _, _, left_eye, right_eye = bbox
-
-        eye_distance = np.linalg.norm(
-            np.array(left_eye) - np.array(right_eye)
-        )
-
-        W = 6.3  # 平均瞳距（厘米）
-        distance = (W * self.focal_distance) / (eye_distance + 1e-6)
-
-        return distance
+        eye_distance = np.linalg.norm(np.array(left_eye) - np.array(right_eye))
+        return (6.3 * self.focal_distance) / (eye_distance + 1e-6)

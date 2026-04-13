@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, memo } from 'react';
+import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { StopCircleIcon, MicrophoneIcon, PaperAirplaneIcon } from '@heroicons/react/24/solid';
 import { useSentioAsrStore, useChatRecordStore, useSentioVisionStore } from '@/lib/store/sentio';
 import { Input, Button, Spinner, addToast, Tooltip } from '@heroui/react';
@@ -31,11 +31,11 @@ const VAD_OFF_WINDOW = 700;      // VAD结束防抖窗口
 
 let micRecoder: Recorder | null = null;
 
-export const ChatInput = memo(({
+export const ChatInput = memo(function ChatInput({
     postProcess
 }: {
     postProcess?: (conversation_id: string, message_id: string, think: string, content: string) => void
-}) => {
+}) {
     const t = useTranslations('Products.sentio');
     const [message, setMessage] = useState("");
     const [startMicRecord, setStartMicRecord] = useState(false);
@@ -44,7 +44,7 @@ export const ChatInput = memo(({
     const { chat, abort, chatting } = useChatWithAgent();
     const { startAudioTimer, stopAudioTimer } = useAudioTimer();
 
-    const handleStartRecord = () => {
+    const handleStartRecord = useCallback(() => {
         abort();
         if (micRecoder == null) {
             micRecoder = new Recorder({
@@ -66,9 +66,9 @@ export const ChatInput = memo(({
                 })
             }
         )
-    }
+    }, [abort, startAudioTimer, t])
 
-    const handleStopRecord = async () => {
+    const handleStopRecord = useCallback(async () => {
         micRecoder.stop();
         setStartMicRecord(false);
         if (!stopAudioTimer()) return;
@@ -83,7 +83,7 @@ export const ChatInput = memo(({
             setMessage("");
         }
         setStartAsrConvert(false);
-    }
+    }, [asrEngine, asrSettings, stopAudioTimer, t])
 
     const onFileClick = () => {
         // TODO: open file dialog
@@ -115,7 +115,7 @@ export const ChatInput = memo(({
         return () => {
             window.removeEventListener("keydown", handleKeyDown);
         }
-    }, [startMicRecord])
+    }, [handleStartRecord, handleStopRecord, startMicRecord])
 
     return (
         <div className='flex flex-col w-4/5 md:w-2/3 2xl:w-1/2 items-start z-10 gap-2'>
@@ -185,6 +185,17 @@ const convertFloat32ToAnalyseData = (float32Data: Float32Array) => {
     return analyseData;
 }
 
+const mergeFloat32Arrays = (arrays: Float32Array[]) => {
+    const totalLen = arrays.reduce((sum, arr) => sum + arr.length, 0);
+    const result = new Float32Array(totalLen);
+    let offset = 0;
+    for (const arr of arrays) {
+        result.set(arr, offset);
+        offset += arr.length;
+    }
+    return result;
+}
+
 // 音频帧类型定义
 type PcmFrame = {
     ts: number;           // 时间戳
@@ -192,7 +203,7 @@ type PcmFrame = {
 };
 
 // ChatVadInput 组件 - 支持唇动开关
-export const ChatVadInput = memo(() => {
+export const ChatVadInput = memo(function ChatVadInput() {
     const t = useTranslations('Products.sentio');
     const canvasRef = useRef<HTMLCanvasElement | null>(null)
     const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
@@ -208,7 +219,6 @@ export const ChatVadInput = memo(() => {
     // 添加视觉检测
     const {
         bindPreviewRef,
-        videoRef,
         hasFace,
         isTalking: isLipMoving,
         startDetection: startVision,
@@ -281,18 +291,6 @@ export const ChatVadInput = memo(() => {
         if (ring.length > RING_N) {
             ring.splice(0, ring.length - RING_N);
         }
-    }
-
-    // 合并音频数组
-    function mergeFloat32Arrays(arrays: Float32Array[]): Float32Array {
-        const totalLen = arrays.reduce((sum, arr) => sum + arr.length, 0);
-        const result = new Float32Array(totalLen);
-        let offset = 0;
-        for (const arr of arrays) {
-            result.set(arr, offset);
-            offset += arr.length;
-        }
-        return result;
     }
 
     // 处理语音结束
@@ -411,61 +409,58 @@ export const ChatVadInput = memo(() => {
         },
     });
 
-    const initCanvas = () => {
-        const dpr = window.devicePixelRatio || 1
-        const canvas = document.getElementById('voice-input') as HTMLCanvasElement
-
-        if (canvas) {
-            const { width: cssWidth, height: cssHeight } = canvas.getBoundingClientRect()
-
-            canvas.width = dpr * cssWidth
-            canvas.height = dpr * cssHeight
-            canvasRef.current = canvas
-
-            const ctx = canvas.getContext('2d')
-            if (ctx) {
-                ctx.scale(dpr, dpr)
-                ctx.fillStyle = 'rgb(215, 183, 237)'
-                ctxRef.current = ctx
-            }
-        }
-    }
-
-    function drawCanvas() {
-        const canvas = canvasRef.current!
-        const ctx = ctxRef.current!
-        if (canvas && ctx && waveData.current) {
-            const resolution = 3
-            const dataArray = [].slice.call(waveData.current)
-            const lineLength = parseInt(`${canvas.width / resolution}`)
-            const gap = parseInt(`${dataArray.length / lineLength}`)
-
-            ctx.clearRect(0, 0, canvas.width, canvas.height)
-            ctx.beginPath()
-            let x = 0
-            for (let i = 0; i < lineLength; i++) {
-                let v = dataArray.slice(i * gap, i * gap + gap).reduce((prev: number, next: number) => {
-                    return prev + next
-                }, 0) / gap
-
-                const y = (v - 128) / 128 * canvas.height
-
-                ctx.moveTo(x, 16)
-                if (ctx.roundRect)
-                    ctx.roundRect(x, 16 - y, 2, y, [1, 1, 0, 0])
-                else
-                    ctx.rect(x, 16 - y, 2, y)
-                ctx.fill()
-                x += resolution
-            }
-            ctx.closePath();
-        }
-        drawId.current = requestAnimationFrame(drawCanvas);
-    }
-
     useEffect(() => {
         console.log('[ChatVadInput] Initializing canvas and VAD');
-        initCanvas();
+        const dpr = window.devicePixelRatio || 1;
+        const canvas = document.getElementById('voice-input') as HTMLCanvasElement | null;
+
+        if (canvas) {
+            const { width: cssWidth, height: cssHeight } = canvas.getBoundingClientRect();
+            canvas.width = dpr * cssWidth;
+            canvas.height = dpr * cssHeight;
+            canvasRef.current = canvas;
+
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.scale(dpr, dpr);
+                ctx.fillStyle = 'rgb(215, 183, 237)';
+                ctxRef.current = ctx;
+            }
+        }
+
+        const drawCanvas = () => {
+            const currentCanvas = canvasRef.current;
+            const currentCtx = ctxRef.current;
+            if (currentCanvas && currentCtx && waveData.current) {
+                const resolution = 3;
+                const dataArray = [].slice.call(waveData.current);
+                const lineLength = parseInt(`${currentCanvas.width / resolution}`);
+                const gap = parseInt(`${dataArray.length / lineLength}`);
+
+                currentCtx.clearRect(0, 0, currentCanvas.width, currentCanvas.height);
+                currentCtx.beginPath();
+                let x = 0;
+                for (let i = 0; i < lineLength; i++) {
+                    const v = dataArray.slice(i * gap, i * gap + gap).reduce((prev: number, next: number) => {
+                        return prev + next;
+                    }, 0) / gap;
+
+                    const y = (v - 128) / 128 * currentCanvas.height;
+
+                    currentCtx.moveTo(x, 16);
+                    if (currentCtx.roundRect) {
+                        currentCtx.roundRect(x, 16 - y, 2, y, [1, 1, 0, 0]);
+                    } else {
+                        currentCtx.rect(x, 16 - y, 2, y);
+                    }
+                    currentCtx.fill();
+                    x += resolution;
+                }
+                currentCtx.closePath();
+            }
+            drawId.current = requestAnimationFrame(drawCanvas);
+        };
+
         drawId.current = requestAnimationFrame(drawCanvas);
         return () => {
             !!drawId.current && cancelAnimationFrame(drawId.current);
@@ -508,7 +503,7 @@ export const ChatVadInput = memo(() => {
 });
 
 // ChatStreamInput 组件 - 支持唇动开关
-export const ChatStreamInput = memo(() => {
+export const ChatStreamInput = memo(function ChatStreamInput() {
     const t = useTranslations('Products.sentio');
     const canvasRef = useRef<HTMLCanvasElement | null>(null)
     const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
@@ -527,7 +522,6 @@ export const ChatStreamInput = memo(() => {
     const { enabled: visionEnabled, showPreview, fps: visionFps } = useSentioVisionStore();
     const {
         bindPreviewRef,
-        videoRef,
         hasFace,
         isTalking: isLipMoving,
         startDetection: startVision,
@@ -575,27 +569,12 @@ export const ChatStreamInput = memo(() => {
     // 停止检查的定时器
     const stopCheckId = useRef<number | null>(null);
 
-    // 辅助函数：发送缓冲区的音频
-    function flushBuffered(ws: any) {
+    const flushBuffered = useCallback((ws: any) => {
         for (const buf of audioBufferRef.current) {
             ws.sendMessage(WS_SEND_ACTION_TYPE.ENGINE_PARTIAL_INPUT, buf);
         }
         audioBufferRef.current = [];
-    }
-
-    function ringPush(frame: PcmFrame) {
-        const ring = ringRef.current;
-        ring.push(frame);
-        if (ring.length > RING_N) ring.splice(0, ring.length - RING_N);
-    }
-
-    function mergeFloat32Arrays(arrays: Float32Array[]) {
-        const total = arrays.reduce((s, a) => s + a.length, 0);
-        const out = new Float32Array(total);
-        let off = 0;
-        for (const a of arrays) { out.set(a, off); off += a.length; }
-        return out;
-    }
+    }, []);
 
     async function handleSpeechEndFile(audio: Float32Array) {
         try {
@@ -606,6 +585,29 @@ export const ChatStreamInput = memo(() => {
             addToast({ title: e.message || String(e), variant: 'flat', color: 'danger' });
         }
     }
+
+    const runtimeRef = useRef({
+        chat,
+        abort,
+        getLastRecord,
+        updateLastRecord,
+        addChatRecord,
+        deleteLastRecord,
+        handleSpeechEndFile,
+        visionEnabled,
+        visionConnected,
+    });
+    runtimeRef.current = {
+        chat,
+        abort,
+        getLastRecord,
+        updateLastRecord,
+        addChatRecord,
+        deleteLastRecord,
+        handleSpeechEndFile,
+        visionEnabled,
+        visionConnected,
+    };
 
     // 启动视觉检测
     useEffect(() => {
@@ -662,16 +664,18 @@ export const ChatStreamInput = memo(() => {
             }
         }
         prevLipRef.current = isLipMoving;
-    }, [isLipMoving, visionEnabled, visionConnected]);
+    }, [flushBuffered, isLipMoving, visionEnabled, visionConnected]);
 
     // 轮询停止条件
     useEffect(() => {
         const tick = () => {
+            const runtime = runtimeRef.current;
+
             // 流式模式停止检查
             if (isStreamingRef.current) {
                 let shouldStop = false;
 
-                if (visionEnabled && visionConnected) {
+                if (runtime.visionEnabled && runtime.visionConnected) {
                     // 视觉启用时：只有在"VAD静音" 且 （无唇动 或 无人脸）时才停止
                     const noRecentLip = Date.now() - lastLipTsRef.current > LIP_OFF_WINDOW;
                     const vadSilent = !vadActiveRef.current && (Date.now() - lastVoiceTsRef.current > VAD_OFF_WINDOW);
@@ -695,7 +699,7 @@ export const ChatStreamInput = memo(() => {
             if (forceFileModeRef.current && isFileRecRef.current) {
                 let shouldStop = false;
 
-                if (visionEnabled && visionConnected) {
+                if (runtime.visionEnabled && runtime.visionConnected) {
                     // 视觉启用时：无唇动或无人脸
                     const noRecentLip = Date.now() - lastLipTsRef.current > LIP_OFF_WINDOW;
                     shouldStop = (noRecentLip || !hasFaceRef.current) && !vadActiveRef.current;
@@ -709,7 +713,7 @@ export const ChatStreamInput = memo(() => {
                     fileRecordingRef.current = [];
                     isFileRecRef.current = false;
                     console.log('[Fallback] Submitting file-mode audio, len=', full.length);
-                    handleSpeechEndFile(full);
+                    runtime.handleSpeechEndFile(full);
                 }
             }
             stopCheckId.current = requestAnimationFrame(tick);
@@ -719,64 +723,71 @@ export const ChatStreamInput = memo(() => {
         return () => {
             if (stopCheckId.current) cancelAnimationFrame(stopCheckId.current);
         };
-    }, [visionEnabled, visionConnected]);
-
-    const initCanvas = () => {
-        const dpr = window.devicePixelRatio || 1
-        const canvas = document.getElementById('voice-input') as HTMLCanvasElement
-
-        if (canvas) {
-            const { width: cssWidth, height: cssHeight } = canvas.getBoundingClientRect()
-
-            canvas.width = dpr * cssWidth
-            canvas.height = dpr * cssHeight
-            canvasRef.current = canvas
-
-            const ctx = canvas.getContext('2d')
-            if (ctx) {
-                ctx.scale(dpr, dpr)
-                ctx.fillStyle = 'rgb(215, 183, 237)'
-                ctxRef.current = ctx
-            }
-        }
-    }
-
-    function drawCanvas() {
-        const canvas = canvasRef.current!
-        const ctx = ctxRef.current!
-        if (canvas && ctx && waveData.current) {
-            const dataArray = [].slice.call(waveData.current)
-            const resolution = 10
-            const lineLength = parseInt(`${canvas.width / resolution}`)
-            const gap = parseInt(`${dataArray.length / lineLength}`)
-            ctx.clearRect(0, 0, canvas.width, canvas.height)
-            ctx.beginPath()
-            let x = 0
-            for (let i = 0; i < lineLength; i++) {
-                let v = dataArray.slice(i * gap, i * gap + gap).reduce((prev: number, next: number) => {
-                    return prev + next
-                }, 0) / gap
-
-                const y = (v - 128) / 128 * canvas.height
-
-                ctx.moveTo(x, 16)
-                if (ctx.roundRect)
-                    ctx.roundRect(x, 16 - y, 2, y, [1, 1, 0, 0])
-                else
-                    ctx.rect(x, 16 - y, 2, y)
-                ctx.fill()
-                x += resolution
-            }
-            ctx.closePath();
-        }
-        drawId.current = requestAnimationFrame(drawCanvas);
-    }
+    }, []);
 
     useEffect(() => {
+        const initCanvas = () => {
+            const dpr = window.devicePixelRatio || 1
+            const canvas = document.getElementById('voice-input') as HTMLCanvasElement
+
+            if (canvas) {
+                const { width: cssWidth, height: cssHeight } = canvas.getBoundingClientRect()
+
+                canvas.width = dpr * cssWidth
+                canvas.height = dpr * cssHeight
+                canvasRef.current = canvas
+
+                const ctx = canvas.getContext('2d')
+                if (ctx) {
+                    ctx.scale(dpr, dpr)
+                    ctx.fillStyle = 'rgb(215, 183, 237)'
+                    ctxRef.current = ctx
+                }
+            }
+        }
+
+        const drawCanvas = () => {
+            const canvas = canvasRef.current
+            const ctx = ctxRef.current
+            if (canvas && ctx && waveData.current) {
+                const dataArray = [].slice.call(waveData.current)
+                const resolution = 10
+                const lineLength = parseInt(`${canvas.width / resolution}`)
+                const gap = parseInt(`${dataArray.length / lineLength}`)
+                ctx.clearRect(0, 0, canvas.width, canvas.height)
+                ctx.beginPath()
+                let x = 0
+                for (let i = 0; i < lineLength; i++) {
+                    const v = dataArray.slice(i * gap, i * gap + gap).reduce((prev: number, next: number) => {
+                        return prev + next
+                    }, 0) / gap
+
+                    const y = (v - 128) / 128 * canvas.height
+
+                    ctx.moveTo(x, 16)
+                    if (ctx.roundRect)
+                        ctx.roundRect(x, 16 - y, 2, y, [1, 1, 0, 0])
+                    else
+                        ctx.rect(x, 16 - y, 2, y)
+                    ctx.fill()
+                    x += resolution
+                }
+                ctx.closePath();
+            }
+            drawId.current = requestAnimationFrame(drawCanvas);
+        }
+
+        const pushRing = (frame: PcmFrame) => {
+            const ring = ringRef.current;
+            ring.push(frame);
+            if (ring.length > RING_N) ring.splice(0, ring.length - RING_N);
+        }
+
         const asrWsClient = createASRWebsocketClient({
             engine: engine,
             config: settings,
             onMessage: (action: string, data: Uint8Array) => {
+                const runtime = runtimeRef.current;
                 const recvAction = action as WS_RECV_ACTION_TYPE;
                 const recvData = new TextDecoder('utf-8').decode(data).trim();
                 switch (recvAction) {
@@ -813,17 +824,17 @@ export const ChatStreamInput = memo(() => {
                         }
                         break;
                     case WS_RECV_ACTION_TYPE.ENGINE_PARTIAL_OUTPUT:
-                        const lastChatRecord = getLastRecord();
+                        const lastChatRecord = runtime.getLastRecord();
                         if (lastChatRecord && lastChatRecord.role == CHAT_ROLE.AI) {
-                            abort();
-                            addChatRecord({ role: CHAT_ROLE.HUMAN, think: "", content: recvData })
+                            runtime.abort();
+                            runtime.addChatRecord({ role: CHAT_ROLE.HUMAN, think: "", content: recvData })
                         } else {
-                            updateLastRecord({ role: CHAT_ROLE.HUMAN, think: "", content: recvData })
+                            runtime.updateLastRecord({ role: CHAT_ROLE.HUMAN, think: "", content: recvData })
                         }
                         break;
                     case WS_RECV_ACTION_TYPE.ENGINE_FINAL_OUTPUT:
-                        deleteLastRecord();
-                        chat(recvData);
+                        runtime.deleteLastRecord();
+                        runtime.chat(recvData);
                         isStreamingRef.current = false; // 重置流式状态
                         audioBufferRef.current = [];     // 清空缓冲
                         break;
@@ -878,6 +889,8 @@ export const ChatStreamInput = memo(() => {
             16000 / 1000 * STREAM_CHUNK_MS, // 40ms 分片
             (chunk: Uint8Array) => {
                 try {
+                    const runtime = runtimeRef.current;
+
                     // 始终保存到缓冲区（用于回带）
                     audioBufferRef.current.push(chunk);
                     if (audioBufferRef.current.length > STREAM_BUFFER_SIZE) {
@@ -890,7 +903,7 @@ export const ChatStreamInput = memo(() => {
                     const recentLip = now - lastLipTsRef.current <= LIP_OFF_WINDOW;
                    const warmupOk = now < lipWarmupUntilRef.current; // VAD 上升沿后的宽容期
 
-                    if (visionEnabled && visionConnected) {
+                    if (runtime.visionEnabled && runtime.visionConnected) {
                        // 若尚未开流但满足条件 ⇒ 立即开流并 flush 缓冲
                         if (
                           !isStreamingRef.current &&
@@ -959,7 +972,7 @@ export const ChatStreamInput = memo(() => {
                 lastVadStateRef.current = vadActiveRef.current;
 
                 // 写入环形缓冲，用于回带
-                ringPush({ ts: now, data: chunk.slice() });
+                pushRing({ ts: now, data: chunk.slice() });
 
                 // 文件模式：如果正在录，就继续累积
                 if (forceFileModeRef.current && isFileRecRef.current) {
@@ -986,7 +999,7 @@ export const ChatStreamInput = memo(() => {
                 handshakeTimerRef.current = null;
             }
         }
-    }, [engine, settings])
+    }, [RING_N, engine, flushBuffered, settings])
 
     return (
         <div className='flex flex-col h-10 w-1/2 md:w-1/3 items-center relative'>
@@ -1019,3 +1032,7 @@ export const ChatStreamInput = memo(() => {
         </div>
     )
 });
+
+ChatInput.displayName = 'ChatInput';
+ChatVadInput.displayName = 'ChatVadInput';
+ChatStreamInput.displayName = 'ChatStreamInput';

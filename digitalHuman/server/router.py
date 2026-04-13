@@ -1,7 +1,11 @@
 # -*- coding: utf-8 -*-
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from digitalHuman.engine import EnginePool
+from digitalHuman.agent import AgentPool
 from digitalHuman.server.api.common.common_api_v0 import router as commonRouter
 from digitalHuman.server.api.asr.asr_api_v0 import router as asrRouter
 from digitalHuman.server.api.tts.tts_api_v0 import router as ttsRouter
@@ -13,10 +17,18 @@ from digitalHuman.utils import config
 
 __all__ = ["app"]
 
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    EnginePool().setup(config.SERVER.ENGINES)
+    AgentPool().setup(config.SERVER.AGENTS)
+    yield
+
 app = FastAPI(
     title=config.COMMON.NAME,
     description=f"This is a cool set of apis for {config.COMMON.NAME}",
-    version=config.COMMON.VERSION
+    version=config.COMMON.VERSION,
+    lifespan=lifespan
 )
 
 app.add_middleware(

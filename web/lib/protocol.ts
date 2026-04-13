@@ -182,6 +182,10 @@ export interface AppConfig {
     };
 }
 
+export interface AppConfigResponse extends BaseResponse {
+    data: AppConfig | null;
+}
+
 
 // Vision 消息类型
 export interface VisionMessage {

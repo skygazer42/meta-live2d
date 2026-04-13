@@ -5,28 +5,109 @@ import * as CONSTANTS from '@/lib/constants';
 
 // ==================== 聊天记录 ==================
 interface SentioChatRecordState {
+    activeScope: string,
     chatRecord: ChatMessage[],
+    chatRecordByScope: Record<string, ChatMessage[]>,
+    setScope: (scope: string) => void,
     addChatRecord: (message: ChatMessage) => void,
     getLastRecord: () => ChatMessage | undefined,
     updateLastRecord: (message: ChatMessage) => void,
     deleteLastRecord: () => void,
     clearChatRecord: () => void
 }
+
+const DEFAULT_CHAT_SCOPE = 'default';
+
+function getScopedRecords(state: Partial<SentioChatRecordState>, scope?: string): ChatMessage[] {
+    const activeScope = scope || state.activeScope || DEFAULT_CHAT_SCOPE;
+    return state.chatRecordByScope?.[activeScope] || state.chatRecord || [];
+}
+
 export const useChatRecordStore = create<SentioChatRecordState>()(
     persist(
         (set) => ({
+            activeScope: DEFAULT_CHAT_SCOPE,
             chatRecord: [],
-            addChatRecord: (message: ChatMessage) => set((state) => ({ chatRecord: [...state.chatRecord, message] })),
+            chatRecordByScope: {
+                [DEFAULT_CHAT_SCOPE]: []
+            },
+            setScope: (scope: string) => set((state) => {
+                const activeScope = scope || DEFAULT_CHAT_SCOPE;
+                return {
+                    activeScope,
+                    chatRecord: getScopedRecords(state, activeScope),
+                    chatRecordByScope: state.chatRecordByScope || {
+                        [DEFAULT_CHAT_SCOPE]: state.chatRecord || []
+                    }
+                };
+            }),
+            addChatRecord: (message: ChatMessage) => set((state) => {
+                const activeScope = state.activeScope || DEFAULT_CHAT_SCOPE;
+                const nextChatRecord = [...getScopedRecords(state, activeScope), message];
+                return {
+                    chatRecord: nextChatRecord,
+                    chatRecordByScope: {
+                        ...(state.chatRecordByScope || {}),
+                        [activeScope]: nextChatRecord
+                    }
+                };
+            }),
             getLastRecord: () => { 
-                const chatRecord: ChatMessage[] = useChatRecordStore.getState().chatRecord;
+                const state = useChatRecordStore.getState();
+                const chatRecord: ChatMessage[] = getScopedRecords(state);
                 return chatRecord.length > 0 ? chatRecord[chatRecord.length - 1] : undefined; 
             },
-            updateLastRecord: (message: ChatMessage) => set((state) => ({ chatRecord: [...state.chatRecord.slice(0, -1), message] })),
-            deleteLastRecord: () => set((state) => ({ chatRecord: [...state.chatRecord.slice(0, -1)] })),
-            clearChatRecord: () => set((state) => ({ chatRecord: [] })),
+            updateLastRecord: (message: ChatMessage) => set((state) => {
+                const activeScope = state.activeScope || DEFAULT_CHAT_SCOPE;
+                const nextChatRecord = [...getScopedRecords(state, activeScope).slice(0, -1), message];
+                return {
+                    chatRecord: nextChatRecord,
+                    chatRecordByScope: {
+                        ...(state.chatRecordByScope || {}),
+                        [activeScope]: nextChatRecord
+                    }
+                };
+            }),
+            deleteLastRecord: () => set((state) => {
+                const activeScope = state.activeScope || DEFAULT_CHAT_SCOPE;
+                const nextChatRecord = [...getScopedRecords(state, activeScope).slice(0, -1)];
+                return {
+                    chatRecord: nextChatRecord,
+                    chatRecordByScope: {
+                        ...(state.chatRecordByScope || {}),
+                        [activeScope]: nextChatRecord
+                    }
+                };
+            }),
+            clearChatRecord: () => set((state) => {
+                const activeScope = state.activeScope || DEFAULT_CHAT_SCOPE;
+                return {
+                    chatRecord: [],
+                    chatRecordByScope: {
+                        ...(state.chatRecordByScope || {}),
+                        [activeScope]: []
+                    }
+                };
+            }),
         }),
         {
-            name: 'sentio-chat-record-storage'
+            name: 'sentio-chat-record-storage',
+            version: 2,
+            migrate: (persistedState: any, version) => {
+                if (!persistedState) return persistedState;
+                if (version >= 2 && persistedState.chatRecordByScope) {
+                    return persistedState;
+                }
+                const legacyChatRecord = Array.isArray(persistedState.chatRecord) ? persistedState.chatRecord : [];
+                return {
+                    ...persistedState,
+                    activeScope: DEFAULT_CHAT_SCOPE,
+                    chatRecord: legacyChatRecord,
+                    chatRecordByScope: {
+                        [DEFAULT_CHAT_SCOPE]: legacyChatRecord
+                    }
+                };
+            }
         }
     )
 )
@@ -136,8 +217,7 @@ export const useSentioAgentStore = create<SentioAgentState>()(
             engine: "default",
             infer_type: IFER_TYPE.NORMAL,
             settings: {},
-            // setEnable: (enable: boolean) => set((state) => ({ enable: enable })),
-            setEnable: (enable: boolean) => set((state) => ({})),
+            setEnable: (enable: boolean) => set((state) => ({ enable: enable })),
             setInferType: (infer_type: IFER_TYPE) => set((state) => ({ infer_type: infer_type })),
             setEngine: (by: string) => set((state) => ({ engine: by })),
             setSettings: (by: { [key: string]: any }) => set((state) => ({ settings: by }))

@@ -57,8 +57,7 @@ export function ValueSlider(
                     </Tooltip>
                 </label>
             )}
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            renderValue={({ children, ...props }) => (
+            renderValue={(props) => (
                 <output {...props}>
                     <Tooltip
                         className="text-tiny text-default-500 rounded-md"
@@ -90,4 +89,3 @@ export function ValueSlider(
         />
     );
 }
-

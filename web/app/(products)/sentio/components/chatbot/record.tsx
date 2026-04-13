@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect, memo, useCallback } from 'react';
+import { useRef, useEffect, memo } from 'react';
 import { UserIcon, SunIcon } from '@heroicons/react/24/solid';
 import { useChatRecordStore, useSentioBasicStore } from '@/lib/store/sentio';
 import { CHAT_ROLE, ChatMessage } from '@/lib/protocol';
@@ -10,7 +10,7 @@ import remarkGfm from 'remark-gfm'
 import { useTranslations } from 'next-intl';
 import clsx from 'clsx';
 
-const ChatThink = memo(({message, thinking}: {message: string, thinking: boolean}) => {
+const ChatThink = memo(function ChatThink({message, thinking}: {message: string, thinking: boolean}) {
     const t = useTranslations('Products.sentio');
     const { showThink } = useSentioBasicStore();
     const ThinkMessage = () => {
@@ -26,23 +26,20 @@ const ChatThink = memo(({message, thinking}: {message: string, thinking: boolean
             </div>
         )
     }
-    const Thinking = useCallback(() => {
-        return (
-            thinking ?
-            <div className='flex flex-row gap-1 items-center overflow-hidden'>
-                <p className='text-2xl'>🤔</p>
-                <p>{t('thinking')}</p>
-                <Spinner color='warning' variant="dots" />
-            </div>
-            :
-            <></>
-        )
-    }, [thinking]);
+    const thinkingContent = thinking ? (
+        <div className='flex flex-row gap-1 items-center overflow-hidden'>
+            <p className='text-2xl'>🤔</p>
+            <p>{t('thinking')}</p>
+            <Spinner color='warning' variant="dots" />
+        </div>
+    ) : null;
 
     return (
-        showThink? <ThinkMessage /> : <Thinking />
+        showThink ? <ThinkMessage /> : thinkingContent
     )
 });
+
+ChatThink.displayName = 'ChatThink';
 
 export const ChatRecord = () => {
     const chatbotRef = useRef<HTMLDivElement>(null);
@@ -55,7 +52,7 @@ export const ChatRecord = () => {
     useEffect(() => {
         // 新窗口清空聊天记录
         clearChatRecord();
-    }, []);
+    }, [clearChatRecord]);
     return (
         <div className='flex flex-col w-full space-y-4 p-3 overflow-y-auto no-scrollbar z-10' ref={chatbotRef}>
             {
