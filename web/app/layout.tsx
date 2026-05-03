@@ -11,7 +11,7 @@ import "@/styles/globals.css";
 const inter = Inter({subsets: ['latin']});
 
 export const metadata: Metadata = {
-  title: '沐光而行',
+  title: 'skygazer42',
   icons: {
     icon: '/favicon.ico',
   },

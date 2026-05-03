@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint . --ext .js,.jsx,.ts,.tsx,.mjs"
+    "lint": "node ./scripts/run-eslint.cjs . --ext .js,.jsx,.ts,.tsx,.mjs"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

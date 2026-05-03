@@ -1,4 +1,4 @@
-## AWESOME-DIGITAL-HUMAN-部署指南
+## meta-live2d 部署指南
 
 推荐使用容器部署，本地开发使用裸机开发部署  
 
@@ -15,7 +15,7 @@
 * 源码下载
 ```bash
 # 下载源码
-git clone https://github.com/wan-h/awesome-digital-human-live2d.git
+git clone https://github.com/skygazer42/meta-live2d.git
 ```
 * 运行server
 ```bash
@@ -69,7 +69,7 @@ docker-compose up --build -d
 * 容器部署: http://{部署服务器IP}:8880
 
 ### 设置
-参考[操作指南](https://light4ai.feishu.cn/docx/XmGFd5QJwoBdDox8M7zcAcRJnje)中的设置部分
+参考[skygazer42](https://github.com/skygazer42)中的设置部分
 
 ### 其他说明
-* 若需要修改端口则需要修改docker-compose文件中nginx的映射端口以及web中[.env](../web/.env)的启动端口`NEXT_PUBLIC_SERVER_PORT` 
+* 若需要修改端口则需要修改docker-compose文件中nginx的映射端口以及web中[.env](../web/.env)的启动端口`NEXT_PUBLIC_SERVER_PORT`

@@ -1,7 +1,7 @@
 {
   "Metadata": {
-    "title": "Walk In The Light",
-    "description": "Walk In The Light"
+    "title": "skygazer42",
+    "description": "skygazer42"
   },
   "Common": {
     "close": "Close",
@@ -13,9 +13,7 @@
     "uploadImageOrVideo": "Upload Image or Video",
     "fileSizeTip": "File size should be less than ",
     "point": "Point",
-    "noData": "No data to display.",
-    "chargeSuccess": "The purchase was successful!",
-    "balanceInsufficient": "The balance is insufficient, please go to the personal account to recharge"
+    "noData": "No data to display."
   },
   "HomePage": {
     "about": {
@@ -91,7 +89,7 @@
       "loading": "Loading",
       "items": {
         "setting": "Setting",
-        "gallery": "Gallery",
+        "gallery": "Models / Gallery",
         "publish": "Publish/Update",
         "theme": "Limited Theme",
         "workspace": "My Sapce",
@@ -140,8 +138,15 @@
           "custom": "Custom",
           "all": "All",
           "select": "Select Type",
-          "customLink": "Custom Character Model",
-          "checkWaitTip": "Character model is being checked, please wait patiently"
+          "customLink": "Custom Live2D Model",
+          "checkWaitTip": "Character model is being checked, please wait patiently",
+          "resourceType": "Resource Type",
+          "modelName": "Model Name",
+          "modelPathHint": "Example path: web/public/sentio/characters/custom/MyLive2D/",
+          "add": "Add",
+          "remove": "Remove",
+          "modelNameRequired": "Live2D model name is required",
+          "modelAdded": "Live2D model {modelName} added"
         }
       },
       "share": {
@@ -176,41 +181,5 @@
       "description": "An innovative AI travel strategy to create the ultimate experience, life is just a hurried journey, may the moon and stars in the world be your passers-by."
     }
   },
-  "User": {
-    "accountInfo": "Account Information",
-    "username": "Username",
-    "phone": "Phone",
-    "edit": "Edit",
-    "charge": "Charge",
-    "feeInfo": "Fee Information",
-    "points": "Points",
-    "coupons": "Coupons",
-    "pointsUsed": "Points Used",
-    "axisPoints": "Points",
-    "axisDate": "Date",
-    "pointBanlance": "Point Balance",
-    "otherAmount": "Other Amount",
-    "weChatPay": "WeChat Pay",
-    "amountToPay": "Amount to Pay: ",
-    "payTime": "Remaining payment time: ",
-    "timeoutOrder": ", the timeout order will automatically fail.",
-    "paymentTimeout": "Payment Timeout, ",
-    "recharge": "Recharge",
-    "onlinePayment": "Online Payment",
-    "paySuccess": "Payment Successful",
-    "regeneration": "Regeneration",
-    "consumptionRecord": "Record of Consumption",
-    "chargeRecord": "Record of Charge",
-    "orderId": "Order ID",
-    "spendPoints": "Points Spending",
-    "endTime": "End Time",
-    "createdTime": "Created Time",
-    "paymentCompletionTime": "Payment Completion Time",
-    "orderStatus": "Order Status",
-    "chargeAmount": "Recharge Amount",
-    "waitingFor":"Waiting for processing",
-    "processing":"Processing",
-    "rechargeSuccessful":"Recharge successful",
-    "rechargeFailed":"Recharge failed"
-  }
+  "User": {}
 }

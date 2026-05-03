@@ -20,11 +20,12 @@ import {
     Switch,
     Select,
     SelectItem,
+    Input,
     Link,
     useDraggable,
     addToast
 } from "@heroui/react";
-import { useSentioBackgroundStore, useSentioCharacterStore } from '@/lib/store/sentio';
+import { useSentioBackgroundStore, useSentioCharacterStore, useSentioCustomLive2DStore, CustomLive2DModel } from '@/lib/store/sentio';
 import { 
     BACKGROUND_TYPE, 
     ResourceModel, 
@@ -40,6 +41,41 @@ import clsx from 'clsx';
 
 interface ResourceModelExtend extends ResourceModel {
     sub_type: BACKGROUND_TYPE | CHARACTER_TYPE
+}
+
+const CUSTOM_LIVE2D_TYPE_OPTIONS = [
+    CHARACTER_TYPE.CUSTOM,
+    CHARACTER_TYPE.FREE,
+    CHARACTER_TYPE.IP,
+] as const;
+
+function getCharacterModelPath(type: CHARACTER_TYPE) {
+    if (type == CHARACTER_TYPE.IP) {
+        return CONSTANTS.SENTIO_CHARACTER_IP_PATH;
+    }
+    if (type == CHARACTER_TYPE.CUSTOM) {
+        return CONSTANTS.SENTIO_CHARACTER_CUSTOM_PATH;
+    }
+    return CONSTANTS.SENTIO_CHARACTER_FREE_PATH;
+}
+
+function buildCustomLive2DResource(modelName: string, subType: CHARACTER_TYPE): CustomLive2DModel {
+    const modelPath = getCharacterModelPath(subType);
+    return {
+        name: modelName,
+        sub_type: subType as CHARACTER_TYPE.IP | CHARACTER_TYPE.CUSTOM | CHARACTER_TYPE.FREE,
+        link: getSrcPath(`${modelPath}/${modelName}/${modelName}.png`),
+    };
+}
+
+function toCharacterResource(model: CustomLive2DModel): ResourceModelExtend {
+    return {
+        resource_id: `${model.sub_type}_${model.name}`,
+        name: model.name,
+        sub_type: model.sub_type,
+        link: model.link,
+        type: RESOURCE_TYPE.CHARACTER,
+    };
 }
 
 function ImagesList({
@@ -193,9 +229,81 @@ function BackgroundsTab() {
     )
 }
 
+function CustomLive2DConfigPanel() {
+    const t = useTranslations('Products.sentio.gallery.characters');
+    const { customLive2DModels, addCustomLive2DModel, removeCustomLive2DModel } = useSentioCustomLive2DStore();
+    const [modelName, setModelName] = useState('');
+    const [subType, setSubType] = useState<CHARACTER_TYPE>(CHARACTER_TYPE.CUSTOM);
+    const normalizedModelName = modelName.trim();
+    const previewPath = normalizedModelName ? buildCustomLive2DResource(normalizedModelName, subType).link : '';
+
+    const addModel = () => {
+        if (!normalizedModelName) {
+            addToast({
+                color: 'warning',
+                title: t('modelNameRequired'),
+            });
+            return;
+        }
+
+        addCustomLive2DModel(buildCustomLive2DResource(normalizedModelName, subType));
+        setModelName('');
+        addToast({
+            color: 'success',
+            title: t('modelAdded', { modelName: normalizedModelName }),
+        });
+    };
+
+    return (
+        <div className="rounded-lg border border-default-200 p-3 flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
+                <Select
+                    className="sm:max-w-48"
+                    label={t('resourceType')}
+                    selectedKeys={[subType]}
+                    onSelectionChange={(keys) => {
+                        const key = Array.from(keys)[0] as CHARACTER_TYPE | undefined;
+                        if (key) setSubType(key);
+                    }}
+                >
+                    {CUSTOM_LIVE2D_TYPE_OPTIONS.map((type) => (
+                        <SelectItem key={type}>{type.toLowerCase()}</SelectItem>
+                    ))}
+                </Select>
+                <Input
+                    label={t('modelName')}
+                    placeholder="MyLive2D"
+                    value={modelName}
+                    onValueChange={setModelName}
+                    description={previewPath || t('modelPathHint')}
+                />
+                <Button color="primary" className="sm:self-start sm:mt-2" onPress={addModel}>
+                    {t('add')}
+                </Button>
+            </div>
+            {customLive2DModels.length > 0 && (
+                <div className="flex flex-col gap-2">
+                    {customLive2DModels.map((model) => (
+                        <div key={`${model.sub_type}_${model.name}`} className="flex items-center justify-between gap-3 rounded-md bg-default-100 px-3 py-2">
+                            <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">{model.name}</p>
+                                <p className="text-xs text-default-500 truncate">{model.link}</p>
+                            </div>
+                            <Button size="sm" color="danger" variant="light" onPress={() => removeCustomLive2DModel(model.name, model.sub_type)}>
+                                {t('remove')}
+                            </Button>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    )
+}
+
 function CharactersTab() {
     const t = useTranslations('Products.sentio.gallery.characters');
     const { character, setCharacter } = useSentioCharacterStore();
+    const { customLive2DModels } = useSentioCustomLive2DStore();
     const [characterType, setCharacterType] = useState<string>(t('all'));
     const { setLive2dCharacter } = useLive2D();
     // 映射关系
@@ -209,18 +317,15 @@ function CharactersTab() {
         var characters: ResourceModelExtend[] = [];
         // 静态图 / 动态图 处理
         var models = [];
-        var modelPath = "";
+        var modelPath = getCharacterModelPath(type);
         if (type == CHARACTER_TYPE.IP) {
             models = CONSTANTS.SENTIO_CHARACTER_IP_MODELS;
-            modelPath = CONSTANTS.SENTIO_CHARACTER_IP_PATH;
         }
         else if (type == CHARACTER_TYPE.CUSTOM) {
             models = CONSTANTS.SENTIO_CHARACTER_CUSTOM_MODELS;
-            modelPath = CONSTANTS.SENTIO_CHARACTER_CUSTOM_PATH;
         }
         else {
             models = CONSTANTS.SENTIO_CHARACTER_FREE_MODELS;
-            modelPath = CONSTANTS.SENTIO_CHARACTER_FREE_PATH;
         }
 
         for (const model of models) {
@@ -238,15 +343,19 @@ function CharactersTab() {
     const freeCharacters = useMemo(() => getCharacters(CHARACTER_TYPE.FREE), [])
     const ipCharacters = useMemo(() => getCharacters(CHARACTER_TYPE.IP), []);
     const customCharacters = useMemo(() => getCharacters(CHARACTER_TYPE.CUSTOM), []);
-    const characters = [...freeCharacters, ...ipCharacters, ...customCharacters];
+    const browserConfiguredCharacters = useMemo(() => customLive2DModels.map(toCharacterResource), [customLive2DModels]);
+    const characters = [...freeCharacters, ...ipCharacters, ...customCharacters, ...browserConfiguredCharacters];
 
     const choiceCharacter = (index: number | null) => {
         if (index != null) {
-            if (character.name == characters[index].name && character.resource_id == characters[index].resource_id) return;
-            setCharacter(characters[index]);
-            setLive2dCharacter(characters[index]);
+            const selectedCharacter = characters[index];
+            if (!selectedCharacter) return;
+            if (character && character.name == selectedCharacter.name && character.resource_id == selectedCharacter.resource_id) return;
+            setCharacter(selectedCharacter);
+            setLive2dCharacter(selectedCharacter);
         } else {
             setCharacter(null);
+            setLive2dCharacter(null);
         }
     }
 
@@ -272,7 +381,8 @@ function CharactersTab() {
                         </Select>
                     </div>
 
-                    <Link className='hover:underline text-sm w-fit ml-2' href={BUSINESS_COOPERATION_URL} color='warning' isExternal>👉 定制人物模型</Link>
+                    <Link className='hover:underline text-sm w-fit ml-2' href={BUSINESS_COOPERATION_URL} color='warning' isExternal>👉 {t('customLink')}</Link>
+                    <CustomLive2DConfigPanel />
                     <ImagesList
                         current={character}
                         descs={characters}

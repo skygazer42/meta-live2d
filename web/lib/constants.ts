@@ -14,12 +14,13 @@ export const LANUSAGE_ZH = "中文"
 export const LANUSAGE_EN = "English"
 
 // url
-export const BUSINESS_COOPERATION_URL = "https://light4ai.feishu.cn/share/base/form/shrcnb0d1Au4dvMaswHNGDbUNTR"
-export const JOIN_US_URL = "https://light4ai.feishu.cn/share/base/form/shrcn5zSQvM4c8kjK69LXvtdgqh"
-export const FEEDBACK_URL = "https://light4ai.feishu.cn/share/base/form/shrcnL4pzrdKlED6oB94nT9Yiyg"
+export const SKYGAZER42_URL = "https://github.com/skygazer42"
+export const BUSINESS_COOPERATION_URL = SKYGAZER42_URL
+export const JOIN_US_URL = SKYGAZER42_URL
+export const FEEDBACK_URL = SKYGAZER42_URL
 // sentio
-export const SENTIO_GUIDE_URL = "https://light4ai.feishu.cn/docx/XmGFd5QJwoBdDox8M7zcAcRJnje"
-export const SENTIO_GITHUB_URL = "https://github.com/wan-h/awesome-digital-human-live2d"
+export const SENTIO_GUIDE_URL = SKYGAZER42_URL
+export const SENTIO_GITHUB_URL = SKYGAZER42_URL
 export const SENTIO_BACKGROUND_PATH = "sentio/backgrounds/"
 export const SENTIO_BACKGROUND_STATIC_PATH = "sentio/backgrounds/static"
 export const SENTIO_BACKGROUND_DYNAMIC_PATH = "sentio/backgrounds/dynamic"
@@ -30,7 +31,7 @@ export const SENTIO_CHARACTER_IP_PATH = "sentio/characters/ip"
 export const SENTIO_CHARACTER_CUSTOM_PATH = "sentio/characters/custom"
 export const SENTIO_CHARACTER_FREE_PATH = "sentio/characters/free"
 export const SENTIO_CHARACTER_IP_MODELS: string[] = []
-export const SENTIO_CHARACTER_CUSTOM_MODELS: string[] = ["Kongfz"]
+export const SENTIO_CHARACTER_CUSTOM_MODELS: string[] = []
 export const SENTIO_CHARACTER_FREE_MODELS: string[] = ["HaruGreeter", "Haru", "Kei", "Chitose", "Epsilon", "Hibiki", "Hiyori", "Izumi", "Mao", "Rice", "Shizuku", "Tsumiki"]
 export const SENTIO_CHARACTER_DEFAULT = "HaruGreeter"
 export const SENTIO_CHARACTER_DEFAULT_PORTRAIT: string = `${SENTIO_CHARACTER_FREE_PATH}/${SENTIO_CHARACTER_DEFAULT}/${SENTIO_CHARACTER_DEFAULT}.png`

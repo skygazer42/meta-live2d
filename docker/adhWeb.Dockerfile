@@ -1,6 +1,6 @@
 # FROM node:alpine3.19
 # 使用阿里云镜像
-FROM registry.cn-hangzhou.aliyuncs.com/awesome-digital-human/node:alpine3.19
+FROM registry.cn-hangzhou.aliyuncs.com/meta-live2d/node:alpine3.19
 
 # 添加代码
 ADD web/ /workspace

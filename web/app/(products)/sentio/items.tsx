@@ -27,6 +27,19 @@ export function Items() {
     const [isOpen, setIsOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+    const blurActiveElement = () => {
+        if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+        }
+    };
+    const openSettings = () => {
+        blurActiveElement();
+        setIsSettingsOpen(true);
+    };
+    const openGallery = () => {
+        blurActiveElement();
+        setIsGalleryOpen(true);
+    };
 
     return (
         <div>
@@ -50,7 +63,7 @@ export function Items() {
                     <DropdownItem 
                         key="setting"
                         startContent={<Cog8ToothIcon className="size-6"/>}
-                        onPress={() => setIsSettingsOpen(true)}
+                        onPress={openSettings}
                     >
                         {t('setting')}
                     </DropdownItem>
@@ -58,7 +71,7 @@ export function Items() {
                     <DropdownItem 
                         key="gallery"
                         startContent={<PhotoIcon className="size-6"/>}
-                        onPress={() => setIsGalleryOpen(true)}
+                        onPress={openGallery}
                     >
                         {t('gallery')}
                     </DropdownItem>

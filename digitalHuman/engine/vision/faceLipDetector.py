@@ -63,7 +63,7 @@ class FaceLipDetector(BaseVisionEngine):
 
         # ========== ONNX 模型配置 ==========
         model_path = self._resolve_local_path(
-            str(params.get("model_path", "/data/temp21/digital-human/models/lip_model.onnx"))
+            str(params.get("model_path", "models/lip_model.onnx"))
         )
         sess_options = ort.SessionOptions()
         sess_options.intra_op_num_threads = 4

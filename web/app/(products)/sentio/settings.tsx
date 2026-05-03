@@ -21,7 +21,7 @@ import { APP_TYPE } from '@/lib/protocol';
 function FreedomSettingsTabs() {
     const t = useTranslations('Products.sentio.settings');
     return (
-        <Tabs aria-label="Settings" destroyInactiveTabPanel={false}>
+        <Tabs aria-label="Settings">
             <Tab key='basic' title={t('basic.title')}>
                 <BasicTab />
             </Tab>

@@ -1,6 +1,6 @@
 # FROM python:3.10.15-bookworm
 # 使用阿里云镜像
-FROM registry.cn-hangzhou.aliyuncs.com/awesome-digital-human/python:3.10.15-bookworm
+FROM registry.cn-hangzhou.aliyuncs.com/meta-live2d/python:3.10.15-bookworm
 
 
 # 中文问题

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from 'zustand/middleware'
-import { ResourceModel, ChatMessage, CHAT_MODE, APP_TYPE, IFER_TYPE } from '@/lib/protocol';
+import { ResourceModel, ChatMessage, CHAT_MODE, APP_TYPE, IFER_TYPE, CHARACTER_TYPE } from '@/lib/protocol';
 import * as CONSTANTS from '@/lib/constants';
 
 // ==================== 聊天记录 ==================
@@ -263,6 +263,41 @@ export const useSentioCharacterStore = create<SentioCharacterState>()(
 )
 
 // ==================== 聊天模式 ==================
+// ==================== 自定义 Live2D 人物 ==================
+export interface CustomLive2DModel {
+    name: string,
+    sub_type: CHARACTER_TYPE.IP | CHARACTER_TYPE.CUSTOM | CHARACTER_TYPE.FREE,
+    link: string
+}
+
+interface SentioCustomLive2DState {
+    customLive2DModels: CustomLive2DModel[],
+    addCustomLive2DModel: (model: CustomLive2DModel) => void,
+    removeCustomLive2DModel: (name: string, subType: CHARACTER_TYPE) => void
+}
+
+export const useSentioCustomLive2DStore = create<SentioCustomLive2DState>()(
+    persist(
+        (set) => ({
+            customLive2DModels: [],
+            addCustomLive2DModel: (model: CustomLive2DModel) => set((state) => {
+                const nextModels = state.customLive2DModels.filter((item) => {
+                    return !(item.name === model.name && item.sub_type === model.sub_type);
+                });
+                return { customLive2DModels: [...nextModels, model] };
+            }),
+            removeCustomLive2DModel: (name: string, subType: CHARACTER_TYPE) => set((state) => ({
+                customLive2DModels: state.customLive2DModels.filter((item) => {
+                    return !(item.name === name && item.sub_type === subType);
+                })
+            })),
+        }),
+        {
+            name: 'sentio-custom-live2d-storage',
+        }
+    )
+)
+
 interface SentioChatModeState {
     chatMode: CHAT_MODE,
     setChatMode: (chatMode: CHAT_MODE) => void

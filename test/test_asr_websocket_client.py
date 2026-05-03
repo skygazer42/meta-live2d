@@ -19,6 +19,7 @@ import argparse
 import wave
 import os
 import struct
+import json
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -58,6 +59,23 @@ class ActionType:
     STREAM_ENDED = _format_action("STREAM_ENDED")
     ERROR = _format_action("ERROR")
     PONG = _format_action("PONG")
+
+    # Current digitalHuman.protocol WebSocket actions.
+    ENGINE_START = _format_action("ENGINE_START")
+    ENGINE_PARTIAL_INPUT = _format_action("PARTIAL_INPUT")
+    ENGINE_FINAL_INPUT = _format_action("FINAL_INPUT")
+    ENGINE_STOP = _format_action("ENGINE_STOP")
+    ENGINE_INITIALZING = _format_action("ENGINE_INITIALZING")
+    ENGINE_STARTED = _format_action("ENGINE_STARTED")
+    ENGINE_PARTIAL_OUTPUT = _format_action("PARTIAL_OUTPUT")
+    ENGINE_FINAL_OUTPUT = _format_action("FINAL_OUTPUT")
+    ENGINE_STOPPED = _format_action("ENGINE_STOPPED")
+    CONNECTION_ACK = _format_action("CONNECTION_ACK")
+    ENGINE_READY = _format_action("ENGINE_READY")
+    STREAM_STARTED = _format_action("STREAM_STARTED")
+    PARTIAL_TRANSCRIPT = _format_action("PARTIAL_TRANSCRIPT")
+    FINAL_TRANSCRIPT = _format_action("FINAL_TRANSCRIPT")
+    STREAM_ENDED = _format_action("STREAM_ENDED")
 
 
 def parse_binary_message(data: bytes) -> tuple[bytes, bytes]:
@@ -108,20 +126,89 @@ def decode_text_payload(payload: bytes) -> str:
 
 # 消息类型定义（与服务器端保持一致）
 class ClientMessageType(Enum):
-    START_STREAM = "START_STREAM"
-    AUDIO_CHUNK = "AUDIO_CHUNK"
-    END_STREAM = "END_STREAM"
+    ENGINE_START = "ENGINE_START"
+    ENGINE_PARTIAL_INPUT = "PARTIAL_INPUT"
+    ENGINE_FINAL_INPUT = "FINAL_INPUT"
+    ENGINE_STOP = "ENGINE_STOP"
     PING = "PING"
 
 class ServerMessageType(Enum):
-    CONNECTION_ACK = "CONNECTION_ACK"
-    ENGINE_READY = "ENGINE_READY"
-    STREAM_STARTED = "STREAM_STARTED"
-    PARTIAL_TRANSCRIPT = "PARTIAL_TRANSCRIPT"
-    FINAL_TRANSCRIPT = "FINAL_TRANSCRIPT"
-    STREAM_ENDED = "STREAM_ENDED"
+    ENGINE_INITIALZING = "ENGINE_INITIALZING"
+    ENGINE_STARTED = "ENGINE_STARTED"
+    ENGINE_PARTIAL_OUTPUT = "PARTIAL_OUTPUT"
+    ENGINE_FINAL_OUTPUT = "FINAL_OUTPUT"
+    ENGINE_STOPPED = "ENGINE_STOPPED"
     PONG = "PONG"
     ERROR = "ERROR"
+
+
+DEFAULT_ASR_WS_URL = "ws://localhost:8880/adh/asr/v0/engine/stream"
+DEFAULT_ASR_STREAM_ENGINE = "funasrStreaming"
+
+
+def create_engine_start_payload(engine: str = DEFAULT_ASR_STREAM_ENGINE, config: dict | None = None) -> bytes:
+    return encode_text_payload(
+        json.dumps(
+            {
+                "engine": engine,
+                "config": config or {},
+                "data": "",
+            }
+        )
+    )
+
+
+class DummyWebSocket:
+    def __init__(self):
+        self.sent = []
+
+    async def send(self, message):
+        self.sent.append(message)
+
+
+class DummyAudioSource:
+    def get_remaining_audio(self):
+        return b"final-audio"
+
+    def stop_reading(self):
+        self.stopped = True
+
+
+def unpack_message(message: bytes) -> tuple[str, bytes]:
+    action, payload = parse_binary_message(message)
+    return action.decode("utf-8").strip(), payload
+
+
+def test_asr_websocket_client_uses_current_engine_stream_protocol():
+    payload = create_engine_start_payload()
+    assert json.loads(decode_text_payload(payload)) == {
+        "engine": DEFAULT_ASR_STREAM_ENGINE,
+        "config": {},
+        "data": "",
+    }
+
+    async def exercise_client():
+        websocket = DummyWebSocket()
+        client = ASRWebSocketClient()
+        client.websocket = websocket
+        client.audio_source = DummyAudioSource()
+
+        assert client.server_url == DEFAULT_ASR_WS_URL
+        assert await client.send_message(ActionType.ENGINE_START, payload)
+        assert await client.send_audio_chunk(b"partial-audio")
+        await client.stop_audio_stream()
+        await client.handle_server_message(ActionType.ENGINE_FINAL_OUTPUT, b"done")
+
+        return client, [unpack_message(message) for message in websocket.sent]
+
+    client, sent = asyncio.run(exercise_client())
+    assert sent == [
+        ("ENGINE_START", payload),
+        ("PARTIAL_INPUT", b"partial-audio"),
+        ("FINAL_INPUT", b"final-audio"),
+        ("ENGINE_STOP", b""),
+    ]
+    assert client.final_transcript == "done"
 
 class AudioRecorder:
     """音频录制器"""
@@ -291,7 +378,7 @@ class FileAudioSource:
 class ASRWebSocketClient:
     """ASR WebSocket客户端"""
     
-    def __init__(self, server_url="ws://localhost:8880/adh/stream_asr/v0/engine"):
+    def __init__(self, server_url=DEFAULT_ASR_WS_URL):
         self.server_url = server_url
         self.websocket = None
         self.audio_source = None
@@ -305,6 +392,7 @@ class ASRWebSocketClient:
         try:
             logger.info(f"正在连接到服务器: {self.server_url}")
             self.websocket = await websockets.connect(self.server_url)
+            self._main_loop = asyncio.get_running_loop()
             # 保存当前事件循环的引用
             self._main_loop = asyncio.get_running_loop()
             logger.info("WebSocket连接成功")
@@ -342,7 +430,7 @@ class ASRWebSocketClient:
             return False
         
         try:
-            action = ActionType.FINAL_CHUNK if is_final else ActionType.AUDIO_CHUNK
+            action = ActionType.ENGINE_FINAL_INPUT if is_final else ActionType.ENGINE_PARTIAL_INPUT
             message = create_binary_message(action, audio_data)
             await self.websocket.send(message)
             logger.debug(f"发送音频块: {len(audio_data)} 字节 ({'最终块' if is_final else '普通块'})")
@@ -374,6 +462,32 @@ class ASRWebSocketClient:
     async def handle_server_message(self, action: bytes, payload: bytes):
         """处理服务器消息"""
         message_text = decode_text_payload(payload)
+
+        if action == ActionType.ENGINE_INITIALZING:
+            logger.info(f"ASR engine initializing: {message_text}")
+            return
+        if action == ActionType.ENGINE_STARTED:
+            logger.info(f"ASR engine started: {message_text}")
+            return
+        if action == ActionType.ENGINE_PARTIAL_OUTPUT:
+            logger.info(f"Partial transcript: {message_text}")
+            return
+        if action == ActionType.ENGINE_FINAL_OUTPUT:
+            logger.info(f"Final transcript: {message_text}" + str(time.time()))
+            self.final_transcript = message_text
+            return
+        if action == ActionType.ENGINE_STOPPED:
+            logger.info(f"ASR engine stopped: {message_text}")
+            return
+        if action == ActionType.PONG:
+            logger.debug("Received PONG")
+            return
+        if action == ActionType.ERROR:
+            logger.error(f"Server error: {message_text}")
+            return
+        action_name = action.decode("utf-8").strip()
+        logger.warning(f"Unknown ASR WebSocket action: {action_name}")
+        return
         
         if action == ActionType.CONNECTION_ACK:
             logger.info(f"服务器确认连接: {message_text}")
@@ -430,7 +544,7 @@ class ASRWebSocketClient:
         self.audio_source = audio_source
         
         # 发送开始流消息
-        if not await self.send_message(ActionType.START_STREAM):
+        if not await self.send_message(ActionType.ENGINE_START, create_engine_start_payload()):
             return False
         
         # 等待一下确保服务器准备好
@@ -474,7 +588,7 @@ class ASRWebSocketClient:
                 self.audio_source.stop_reading()
         
         # 发送结束流消息
-        await self.send_message(ActionType.END_STREAM)
+        await self.send_message(ActionType.ENGINE_STOP)
         
         logger.info("音频流已停止")
     
@@ -482,7 +596,7 @@ class ASRWebSocketClient:
         """发送PING消息"""
         return await self.send_message(ActionType.PING, encode_text_payload(payload))
 
-async def test_microphone_streaming(server_url, duration=10):
+async def run_microphone_streaming(server_url, duration=10):
     """测试麦克风音频流"""
     client = ASRWebSocketClient(server_url)
     recorder = AudioRecorder()
@@ -520,7 +634,7 @@ async def test_microphone_streaming(server_url, duration=10):
         recorder.cleanup()
         await client.disconnect()
 
-async def test_file_streaming(server_url, audio_file):
+async def run_file_streaming(server_url, audio_file):
     """测试音频文件流"""
     if not os.path.exists(audio_file):
         logger.error(f"音频文件不存在: {audio_file}")
@@ -567,7 +681,7 @@ async def get_user_input():
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, input, "\n请输入命令 (start/stop/quit): ")
 
-async def test_interactive_streaming(server_url):
+async def run_interactive_streaming(server_url):
     """交互式测试模式 - 手动控制音频流开始和停止"""
     client = ASRWebSocketClient(server_url)
     recorder = AudioRecorder()
@@ -676,7 +790,7 @@ async def test_interactive_streaming(server_url):
 def main():
     """主函数"""
     parser = argparse.ArgumentParser(description="ASR WebSocket客户端测试工具")
-    parser.add_argument("--server", default="ws://localhost:8880/adh/stream_asr/v0/engine",
+    parser.add_argument("--server", default=DEFAULT_ASR_WS_URL,
                        help="WebSocket服务器地址")
     parser.add_argument("--mode", choices=["mic", "file", "interactive"], default="interactive",
                        help="测试模式: mic(麦克风定时) 或 file(文件) 或 interactive(交互式)")
@@ -692,16 +806,16 @@ def main():
     
     if args.mode == "mic":
         logger.info("启动麦克风测试模式")
-        asyncio.run(test_microphone_streaming(args.server, args.duration))
+        asyncio.run(run_microphone_streaming(args.server, args.duration))
     elif args.mode == "file":
         if not args.file:
             logger.error("文件模式需要指定 --file 参数")
             return
         logger.info(f"启动文件测试模式: {args.file}")
-        asyncio.run(test_file_streaming(args.server, args.file))
+        asyncio.run(run_file_streaming(args.server, args.file))
     elif args.mode == "interactive":
         logger.info("启动交互式测试模式")
-        asyncio.run(test_interactive_streaming(args.server))
+        asyncio.run(run_interactive_streaming(args.server))
 
 if __name__ == "__main__":
     main()

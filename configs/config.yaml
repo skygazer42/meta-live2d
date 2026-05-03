@@ -1,5 +1,5 @@
 COMMON:
-  NAME: "Awesome-Digital-Human"
+  NAME: "meta-live2d"
   VERSION: "v3.0.0"
   LOG_LEVEL: "DEBUG"
 SERVER:

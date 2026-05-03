@@ -1,10 +1,53 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 function read(relativePath) {
   return readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+}
+
+function repoPath(relativePath) {
+  return fileURLToPath(new URL(`../../${relativePath}`, import.meta.url));
+}
+
+function readRepo(relativePath) {
+  return readFileSync(repoPath(relativePath), 'utf8');
+}
+
+function readStringArrayExport(source, exportName) {
+  const match = source.match(new RegExp(`export const ${exportName}: string\\[\\] = \\[([^\\]]*)\\]`));
+  if (!match) {
+    throw new Error(`missing ${exportName}`);
+  }
+
+  return Array.from(match[1].matchAll(/"([^"]+)"/g), (item) => item[1]);
+}
+
+function collectLive2DAssetRefs(value, parentKey = '', refs = []) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectLive2DAssetRefs(item, parentKey, refs);
+    }
+    return refs;
+  }
+
+  if (value && typeof value === 'object') {
+    for (const [key, item] of Object.entries(value)) {
+      collectLive2DAssetRefs(item, key, refs);
+    }
+    return refs;
+  }
+
+  if (
+    typeof value === 'string' &&
+    ['File', 'Moc', 'Physics', 'Pose', 'Textures', 'UserData'].includes(parentKey)
+  ) {
+    refs.push(value);
+  }
+
+  return refs;
 }
 
 test('root page uses a server redirect to /sentio', () => {
@@ -119,9 +162,13 @@ test('agent store no longer uses an empty setter implementation', () => {
 
 test('lint uses the eslint cli instead of next lint and provides a project config file', () => {
   const packageSource = read('../package.json');
+  const lintRunnerPath = fileURLToPath(new URL('../scripts/run-eslint.cjs', import.meta.url));
   const eslintConfigPath = fileURLToPath(new URL('../.eslintrc.json', import.meta.url));
 
   assert.doesNotMatch(packageSource, /"lint":\s*"next lint"/);
+  assert.match(packageSource, /run-eslint\.cjs/);
+  assert.equal(existsSync(lintRunnerPath), true);
+  assert.match(read('../scripts/run-eslint.cjs'), /ESLINT_USE_FLAT_CONFIG/);
   assert.equal(existsSync(eslintConfigPath), true);
 });
 
@@ -141,6 +188,21 @@ test('engine settings tab reads zustand stores at the component top level instea
   assert.doesNotMatch(source, /return useSentioAsrStore\(\);/);
   assert.doesNotMatch(source, /return useSentioTtsStore\(\);/);
   assert.doesNotMatch(source, /return useSentioAgentStore\(\);/);
+});
+
+test('settings tabs do not keep inactive panels mounted with inert attributes', () => {
+  const source = read('../app/(products)/sentio/settings.tsx');
+
+  assert.doesNotMatch(source, /destroyInactiveTabPanel=\{false\}/);
+});
+
+test('sentio menu blurs focused dropdown items before opening modal overlays', () => {
+  const source = read('../app/(products)/sentio/items.tsx');
+
+  assert.match(source, /blurActiveElement/);
+  assert.match(source, /document\.activeElement\.blur\(\)/);
+  assert.match(source, /onPress=\{openSettings\}/);
+  assert.match(source, /onPress=\{openGallery\}/);
 });
 
 test('fastapi router initializes engine and agent pools during app startup', () => {
@@ -211,6 +273,8 @@ test('face lip detector supports mediapipe tasks as a fallback backend when solu
   const source = read('../../digitalHuman/engine/vision/faceLipDetector.py');
 
   assert.match(source, /mediapipe_mode/);
+  assert.match(source, /models\/lip_model\.onnx/);
+  assert.doesNotMatch(source, /\/data\/temp21\/digital-human/);
   assert.match(source, /create_from_options|create_from_model_path/);
   assert.match(source, /BaseOptions/);
   assert.match(source, /ImageFormat\.SRGB/);
@@ -219,6 +283,8 @@ test('face lip detector supports mediapipe tasks as a fallback backend when solu
 test('vision engine config exposes explicit mediapipe task model paths', () => {
   const source = read('../../configs/engines/vision/faceLipDetector.yaml');
 
+  assert.match(source, /models\/lip_model\.onnx/);
+  assert.doesNotMatch(source, /\/data\/temp21\/digital-human/);
   assert.match(source, /face_detection_model_path/);
   assert.match(source, /face_landmarker_model_path/);
   assert.match(source, /mediapipe_mode/);
@@ -226,10 +292,11 @@ test('vision engine config exposes explicit mediapipe task model paths', () => {
   assert.match(source, /assets\/mediapipe\/face_landmarker_v2_with_blendshapes\.task/);
 });
 
-test('backend pins mediapipe to the macOS-compatible release we validated locally', () => {
+test('backend pins mediapipe to validated platform-compatible releases', () => {
   const source = read('../../requirements.txt');
 
-  assert.match(source, /mediapipe==0\.10\.15/);
+  assert.match(source, /mediapipe==0\.10\.15; platform_system != ["']Windows["']/);
+  assert.match(source, /mediapipe==0\.10\.18; platform_system == ["']Windows["']/);
   assert.match(source, /opencv-python-headless==4\.10\.0\.84/);
 });
 
@@ -251,4 +318,93 @@ test('opencv fallback vision engine uses OpenCV cascade detection without mediap
   assert.match(source, /CascadeClassifier/);
   assert.match(source, /cv2\.data\.haarcascades/);
   assert.match(source, /OpenCVFaceDetector/);
+});
+
+test('gallery character selection is safe before a stored character is initialized', () => {
+  const source = read('../app/(products)/sentio/gallery.tsx');
+
+  assert.match(source, /const selectedCharacter = characters\[index\]/);
+  assert.match(source, /if\s*\(!selectedCharacter\) return/);
+  assert.match(source, /if\s*\(character\s*&&\s*character\.name == selectedCharacter\.name/);
+  assert.match(source, /setLive2dCharacter\(null\)/);
+});
+
+test('registered Live2D character models have loadable runtime assets', () => {
+  const constants = read('../lib/constants.ts');
+  const groups = [
+    {
+      type: 'free',
+      exportName: 'SENTIO_CHARACTER_FREE_MODELS',
+      basePath: repoPath('web/public/sentio/characters/free')
+    },
+    {
+      type: 'custom',
+      exportName: 'SENTIO_CHARACTER_CUSTOM_MODELS',
+      basePath: repoPath('web/public/sentio/characters/custom')
+    },
+    {
+      type: 'ip',
+      exportName: 'SENTIO_CHARACTER_IP_MODELS',
+      basePath: repoPath('web/public/sentio/characters/ip')
+    }
+  ];
+
+  for (const group of groups) {
+    for (const modelName of readStringArrayExport(constants, group.exportName)) {
+      const modelDir = path.join(group.basePath, modelName);
+      const modelJsonPath = path.join(modelDir, `${modelName}.model3.json`);
+      const portraitPath = path.join(modelDir, `${modelName}.png`);
+
+      assert.equal(existsSync(modelDir), true, `${group.type}/${modelName} directory is registered but missing`);
+      assert.equal(existsSync(modelJsonPath), true, `${group.type}/${modelName} is missing ${modelName}.model3.json`);
+      assert.equal(existsSync(portraitPath), true, `${group.type}/${modelName} is missing ${modelName}.png`);
+
+      const modelJson = JSON.parse(readFileSync(modelJsonPath, 'utf8'));
+      for (const assetRef of new Set(collectLive2DAssetRefs(modelJson))) {
+        assert.equal(
+          existsSync(path.join(modelDir, assetRef)),
+          true,
+          `${group.type}/${modelName} model3 references missing asset ${assetRef}`
+        );
+      }
+    }
+  }
+});
+
+test('gallery supports browser-side custom Live2D model registration', () => {
+  const gallerySource = read('../app/(products)/sentio/gallery.tsx');
+  const storeSource = read('../lib/store/sentio.ts');
+
+  assert.match(storeSource, /useSentioCustomLive2DStore/);
+  assert.match(storeSource, /sentio-custom-live2d-storage/);
+  assert.match(storeSource, /addCustomLive2DModel/);
+  assert.match(storeSource, /removeCustomLive2DModel/);
+
+  assert.match(gallerySource, /CustomLive2DConfigPanel/);
+  assert.match(gallerySource, /buildCustomLive2DResource/);
+  assert.match(gallerySource, /SENTIO_CHARACTER_CUSTOM_PATH/);
+  assert.match(gallerySource, /\$\{modelPath\}\/\$\{modelName\}\/\$\{modelName\}\.png/);
+  assert.match(gallerySource, /customLive2DModels/);
+  assert.match(gallerySource, /addCustomLive2DModel/);
+  assert.match(gallerySource, /removeCustomLive2DModel/);
+  assert.match(gallerySource, /modelNameRequired/);
+  assert.match(gallerySource, /modelPathHint/);
+});
+
+test('Live2D model switching resolves browser URL directories without the Node path module', () => {
+  const source = read('../lib/live2d/src/lapplive2dmanager.ts');
+
+  assert.doesNotMatch(source, /from ['"]path['"]/);
+  assert.doesNotMatch(source, /path\.dirname/);
+  assert.match(source, /getCharacterModelDir/);
+});
+
+test('developer docs explain the complete Live2D replacement workflow and validation command', () => {
+  const source = read('../../docs/developer_instrction.md');
+
+  assert.match(source, /web\/public\/sentio\/characters\/(free|custom|ip)\/<ModelName>/);
+  assert.match(source, /<ModelName>\.model3\.json/);
+  assert.match(source, /<ModelName>\.png/);
+  assert.match(source, /SENTIO_CHARACTER_(FREE|CUSTOM|IP)_MODELS/);
+  assert.match(source, /node --test web\/tests\/regression\.test\.mjs/);
 });

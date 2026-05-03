@@ -1,7 +1,7 @@
 {
   "Metadata": {
-    "title": "沐光而行",
-    "description": "沐光而行"
+    "title": "skygazer42",
+    "description": "skygazer42"
   },
   "Common": {
     "close": "关闭",
@@ -13,9 +13,7 @@
     "uploadImageOrVideo": "上传图片或视频",
     "fileSizeTip": "文件大小不能超过",
     "point": "积分",
-    "noData": "暂无数据",
-    "chargeSuccess": "购买成功!",
-    "balanceInsufficient": "余额不足，请前往个人中心充值"
+    "noData": "暂无数据"
   },
   "HomePage": {
     "about": {
@@ -91,7 +89,7 @@
       "loading": "加载中",
       "items": {
         "setting": "设置",
-        "gallery": "画廊",
+        "gallery": "模型/画廊",
         "publish": "发布/更新",
         "shareDifyTip": "本地部署的Dify无法分享!",
         "theme": "限定主题",
@@ -141,8 +139,15 @@
           "custom": "自定义",
           "all": "全部",
           "select": "选择类型",
-          "customLink": "自定人物模型",
-          "checkWaitTip": "人物模型正在校验中，请耐心等待"
+          "customLink": "自定义 Live2D 模型",
+          "checkWaitTip": "人物模型正在校验中，请耐心等待",
+          "resourceType": "资源类型",
+          "modelName": "模型名称",
+          "modelPathHint": "示例路径: web/public/sentio/characters/custom/MyLive2D/",
+          "add": "添加",
+          "remove": "移除",
+          "modelNameRequired": "请输入 Live2D 模型名称",
+          "modelAdded": "已添加 Live2D 模型 {modelName}"
         }
       },
       "share": {
@@ -177,41 +182,5 @@
       "description": "一个创新的 AI 旅游攻略，打造极致的体验，人生不过一趟匆匆的旅程，愿世间的月落星沉皆为你的过客。"
     }
   },
-  "User": {
-    "accountInfo": "账户信息",
-    "username": "姓名",
-    "phone": "手机号",
-    "edit": "编辑",
-    "charge": "充值",
-    "feeInfo": "费用信息",
-    "points": "账户积分",
-    "coupons": "代金券",
-    "pointsUsed": "积分使用情况",
-    "axisPoints": "积分",
-    "axisDate": "日期",
-    "pointBanlance": "积分余额",
-    "otherAmount": "其他金额",
-    "weChatPay": "微信扫描支付",
-    "amountToPay": "应付金额：",
-    "payTime": "剩余支付时间：",
-    "timeoutOrder": "，超时订单将自动失效",
-    "paymentTimeout": "支付超时，",
-    "recharge": "重新支付",
-    "onlinePayment": "在线支付",
-    "paySuccess": "支付完成",
-    "regeneration": "重新生成",
-    "consumptionRecord": "消费记录",
-    "chargeRecord": "充值记录",
-    "orderId": "订单号",
-    "spendPoints": "消费积分",
-    "endTime": "结束时间",
-    "createdTime": "创建时间",
-    "paymentCompletionTime": "支付完成时间",
-    "orderStatus": "订单状态",
-    "chargeAmount": "充值金额",
-    "waitingFor": "等待处理",
-    "processing": "处理中",
-    "rechargeSuccessful": "充值成功",
-    "rechargeFailed": "充值失败"
-  }
+  "User": {}
 }

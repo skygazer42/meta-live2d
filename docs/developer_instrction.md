@@ -1,4 +1,4 @@
-## AWESOME-DIGITAL-HUMAN-开发指南
+## meta-live2d 开发指南
 
 ### 配置文件说明
 由于扩展的多样性，通过一个全局的配置文件管理各个模块的子配置文件    
@@ -15,7 +15,7 @@
 [全局配置](configs/config.yaml)文件中的内容如下:  
 ```yaml
 COMMON:                                 # 通用配置项
-  NAME: "Awesome-Digital-Human"         # 名字
+  NAME: "meta-live2d"                   # 名字
   VERSION: "v3.0.0"                     # 版本
   LOG_LEVEL: "DEBUG"                    # 日志等级
 SERVER:                                 # 服务配置项
@@ -38,14 +38,54 @@ SERVER:                                 # 服务配置项
 
 ### 定制化开发
 #### 人物模型
-* 需要live2d支持的模型👉[社区设计师定制](https://light4ai.feishu.cn/share/base/form/shrcnb0d1Au4dvMaswHNGDbUNTR)  
+* 需要live2d支持的模型👉[skygazer42](https://github.com/skygazer42)
 * 人物模型控制使用 [live2d web SDK](https://www.live2d.com/en/sdk/about/)  
 * 项目开源人物模型均来自 [live2d官方免费素材](https://www.live2d.com/zh-CHS/learn/sample/)   
 
-添加人物模型到`awesome-digital-human-live2d/web/public/sentio/characters`目录下并在`awesome-digital-human-live2d/web/lib/constants.ts`中修改字段`SENTIO_CHARACTER_IP_MODELS`或`SENTIO_CHARACTER_FREE_MODELS`添加人物模型名称即可  
-人物模型规则参考[操作指南](https://light4ai.feishu.cn/docx/XmGFd5QJwoBdDox8M7zcAcRJnje)中的画廊自定义人物部分
+添加人物模型到`meta-live2d/web/public/sentio/characters`目录下并在`meta-live2d/web/lib/constants.ts`中修改字段`SENTIO_CHARACTER_IP_MODELS`、`SENTIO_CHARACTER_CUSTOM_MODELS`或`SENTIO_CHARACTER_FREE_MODELS`添加人物模型名称即可。注册到列表里的模型必须已经有完整静态资源，否则画廊可以显示但运行时无法加载。
+人物模型规则参考[skygazer42](https://github.com/skygazer42)中的画廊自定义人物部分。
+
+##### Live2D 人物替换完整流程
+1. 准备 Cubism 导出的运行时文件，至少包含 `.model3.json`、`.moc3` 和贴图目录；如果模型使用物理、姿势、表情、动作或用户数据，也要同时保留 `.physics3.json`、`.pose3.json`、`.exp3.json`、`.motion3.json`、`.userdata3.json` 等文件。
+2. 选择模型归属目录：
+   - 免费模型：`web/public/sentio/characters/free/<ModelName>`
+   - 定制模型：`web/public/sentio/characters/custom/<ModelName>`
+   - IP 模型：`web/public/sentio/characters/ip/<ModelName>`
+3. 保持目录名、预览图名、模型配置名一致。示例：
+   ```text
+   web/public/sentio/characters/custom/<ModelName>/
+   ├── <ModelName>.png
+   ├── <ModelName>.model3.json
+   ├── <ModelName>.moc3
+   ├── <ModelName>.physics3.json
+   ├── expressions/
+   ├── motions/
+   └── <texture-dir>/
+   ```
+   前端画廊使用`<ModelName>.png`作为预览图，Live2D 加载器使用`<ModelName>.model3.json`作为入口文件。
+4. 检查`<ModelName>.model3.json`里的所有相对路径。`Moc`、`Textures`、`Physics`、`Pose`、`Expressions[].File`、`Motions.*[].File`、`UserData`都必须指向同一模型目录下真实存在的文件，并且大小写要和文件名完全一致。
+5. 在`web/lib/constants.ts`注册模型名：
+   ```ts
+   export const SENTIO_CHARACTER_CUSTOM_MODELS: string[] = ["<ModelName>"]
+   ```
+   如果要设为默认人物，同时把`SENTIO_CHARACTER_DEFAULT`改为`"<ModelName>"`，并确保`SENTIO_CHARACTER_DEFAULT_PORTRAIT`所在分类路径与模型归属目录一致；如果默认人物不是 free 分类，需要同步调整默认画像路径和`useAppConfig`里的默认`resource_id`生成逻辑。
+6. 如果后端嵌入配置要默认使用新人物，修改`configs/apps/sentio_apps.json`中的`character`：
+   ```json
+   {
+     "resource_id": "CUSTOM_<ModelName>",
+     "name": "<ModelName>",
+     "type": "character",
+     "link": "/sentio/characters/custom/<ModelName>/<ModelName>.png"
+   }
+   ```
+7. 运行校验：
+   ```bash
+   node --test web/tests/regression.test.mjs
+   ```
+   这个回归测试会检查已注册模型目录、`<ModelName>.png`、`<ModelName>.model3.json`以及`.model3.json`引用的运行时文件是否存在。
+8. 启动前端后，在画廊切换到对应分类点击人物。切换链路是`gallery.tsx -> useLive2D().setLive2dCharacter -> Live2dManager.changeCharacter -> LAppDelegate.changeCharacter -> LAppLive2DManager.changeCharacter -> LAppModel.loadAssets`，因此画廊预览图路径所在目录就是 Live2D 运行时查找`.model3.json`和相关资源的目录。
 #### 背景图片
-添加图片到`awesome-digital-human-live2d/web/public/sentio/backgrounds`目录下并在`awesome-digital-human-live2d/web/lib/constants.ts`中修改字段`SENTIO_BACKGROUND_STATIC_IMAGES`或`SENTIO_BACKGROUND_DYNAMIC_IMAGES`添加图片名称即可
+添加图片到`meta-live2d/web/public/sentio/backgrounds`目录下并在`meta-live2d/web/lib/constants.ts`中修改字段`SENTIO_BACKGROUND_STATIC_IMAGES`或`SENTIO_BACKGROUND_DYNAMIC_IMAGES`添加图片名称即可
 #### 后端模块扩展
 （后端引擎均通过注册的方式，asr、llm、tts、agent方式相同）
 ##### 常规引擎  

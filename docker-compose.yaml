@@ -1,7 +1,7 @@
 version: '3'
 services:
   adh-nginx:
-    image: registry.cn-hangzhou.aliyuncs.com/awesome-digital-human/nginx:latest
+    image: registry.cn-hangzhou.aliyuncs.com/meta-live2d/nginx:latest
     ports:
       - "8880:80"
       # - "8443:443"
@@ -21,7 +21,7 @@ services:
     #   - "3000:3000"
     volumes:
       - ./web/.env:/workspace/.env
-  # awesome digital human server
+  # meta-live2d server
   adh-api:
     build:
       context: .
