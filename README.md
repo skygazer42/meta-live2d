@@ -1,6 +1,5 @@
 <div align="center">
   <img src="./assets/meta-live2d-logo.png" alt="Meta-Live2D Logo" width="360" />
-
   <p>基于 FastAPI + Next.js 的 Live2D 数字人交互平台，支持 ASR / TTS / Vision / Agent 模块化接入。</p>
 
   <p>
